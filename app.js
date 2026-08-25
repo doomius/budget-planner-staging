@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 06:47';
+const BUILD_VERSION = '2026-08-25 07:47';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -11214,6 +11214,12 @@ function enforceMobileListView() {
     state.viewMode = 'list';
     state.ccViewMode = 'list';
     state.savingsViewMode = 'list';
+    // Vacation Planner's Month calendar view is removed on mobile entirely (same "unreadable at
+    // phone width" reasoning as every other Calendar/List removal above) — per explicit user
+    // request, 2026-08-25. Falls back to Week (which becomes the 3-day view on mobile — see
+    // renderVacationWeekGrid()) rather than Expenses, since Week/Month are the two calendar-shaped
+    // views and this is the closer substitute.
+    if (state.vacationViewMode === 'month') state.vacationViewMode = 'week';
     // The metrics-collapsed state persists from whatever it was last set to (often on desktop) — on
     // a phone, default the metric cards to collapsed the first time we render on mobile, since
     // they eat a lot of scroll-past-before-you-get-to-anything-useful space on a small screen. After
@@ -19301,7 +19307,7 @@ function showDayHighlightsDialog(sourceId) {
 function relocateQuickAddFormIntoModal(kind, dateStr) {
     const host = document.getElementById('modal-quick-add-host');
     if (!host) return;
-    const formId = kind === 'cc' ? 'cc-quick-add-form' : (kind === 'savings' ? 'savings-transfer-form' : 'quick-add-form');
+    const formId = kind === 'cc' ? 'cc-quick-add-form' : (kind === 'savings' ? 'savings-transfer-form' : (kind === 'vacation-day' ? 'vacation-day-quick-add-form' : 'quick-add-form'));
     const form = document.getElementById(formId);
     if (!form) return;
 
@@ -19314,7 +19320,7 @@ function relocateQuickAddFormIntoModal(kind, dateStr) {
     // on the way in too so the modal never inherits list-row sizing regardless of prior state.
     form.classList.remove('quick-add-list-row');
 
-    document.getElementById('modal-quick-add-title').textContent = kind === 'cc' ? 'Add Charge for this Day' : (kind === 'savings' ? 'Add Savings Entry' : 'Add Transaction for this Day');
+    document.getElementById('modal-quick-add-title').textContent = kind === 'cc' ? 'Add Charge for this Day' : (kind === 'savings' ? 'Add Savings Entry' : (kind === 'vacation-day' ? 'Log Actual Transaction' : 'Add Transaction for this Day'));
 
     if (!form._modalHomeParent) {
         form._modalHomeParent = form.parentElement;
@@ -19328,6 +19334,11 @@ function relocateQuickAddFormIntoModal(kind, dateStr) {
         // No specific day context the way the Calendar day-click flow has one (this only ever opens
         // via the mobile FAB here) — default to today, same as the form's own untouched default.
         document.getElementById('savings-transfer-date').value = dateStr || formatLocalDate(new Date());
+    } else if (kind === 'vacation-day') {
+        // Already carries whatever date renderVacationDayGrid() last set it to (state.vacationDayDate)
+        // — DOM relocation preserves field values, it isn't a clone — but set it explicitly too so
+        // this stays correct even if the form somehow arrives here stale.
+        document.getElementById('vacation-quick-date').value = dateStr || state.vacationDayDate || '';
     } else {
         // See init()'s matching comment — #trans-date is a native <input type="date">, ISO only.
         document.getElementById('trans-date').value = dateStr || '';
@@ -19337,7 +19348,7 @@ function relocateQuickAddFormIntoModal(kind, dateStr) {
 }
 
 function restoreQuickAddFormFromModal() {
-    ['quick-add-form', 'cc-quick-add-form', 'savings-transfer-form'].forEach(formId => {
+    ['quick-add-form', 'cc-quick-add-form', 'savings-transfer-form', 'vacation-day-quick-add-form'].forEach(formId => {
         const form = document.getElementById(formId);
         if (form && form._modalHomeParent) {
             form.classList.remove('quick-add-list-row');
@@ -19389,6 +19400,20 @@ function openMobileQuickAddModal() {
     document.getElementById('modal-quick-add-title')?.classList.add('hidden');
     // Likewise no specific day's highlights to show — hide the empty section rather than leave a
     // blank gap above the form.
+    document.getElementById('day-highlights-dialog-content')?.classList.add('hidden');
+    document.getElementById('day-highlights-dialog')?.showModal();
+}
+
+// Vacation Planner's Day View "+ Add Transaction" button (mobile only — see
+// .vacation-day-add-transaction-btn in index.css), replacing the inline "Quick Log Actual
+// Transaction" card with the same button-opens-a-popup pattern as openMobileQuickAddModal() above.
+// Reuses the same day-highlights-dialog + relocateQuickAddFormIntoModal() plumbing rather than a
+// second parallel implementation — see that function's own comment for why. Per explicit user
+// request, 2026-08-25.
+function openVacationDayQuickAddModal() {
+    relocateQuickAddFormIntoModal('vacation-day', state.vacationDayDate || '');
+    document.getElementById('day-highlights-modal-title').textContent = 'Log Actual Transaction';
+    document.getElementById('modal-quick-add-title')?.classList.add('hidden');
     document.getElementById('day-highlights-dialog-content')?.classList.add('hidden');
     document.getElementById('day-highlights-dialog')?.showModal();
 }
@@ -21381,7 +21406,15 @@ function _updateListViewStickyOffset() {
     let personalHeaderHeight = 0;
     if (personalHeader) {
         personalHeader.style.top = `${dashboardHeight}px`;
-        personalHeaderHeight = personalHeader.getBoundingClientRect().height;
+        // Per explicit user request, 2026-08-25: on mobile Dashboard this header is no longer
+        // sticky (relocateMobileDashboardListViewControls()/its matching index.css override — only
+        // "+ Transaction" stays pinned now, relocated into .main-sticky-dashboard itself). Counting
+        // its full (unstuck) height here regardless left the table's own sticky column headers
+        // offset by a stale amount that no longer corresponds to anything actually pinned above
+        // them — they rendered "floating" mid-scroll instead of sitting right below the real sticky
+        // stack. Same dashboardIsSticky-style live check as the outer sticky dashboard above.
+        const personalHeaderIsSticky = getComputedStyle(personalHeader).position === 'sticky';
+        personalHeaderHeight = personalHeaderIsSticky ? personalHeader.getBoundingClientRect().height : 0;
     }
 
     const personalTableHeaders = document.querySelectorAll('#list-view-table-container .data-table th');
@@ -21530,6 +21563,12 @@ function _updateVacationStickyOffsets() {
     capToViewport(document.querySelector('.vacation-day-quick-add-scroll'), 32);
     stackNext(document.getElementById('vacation-day-allday-row'), dayOffset);
     capToViewport(document.getElementById('vacation-day-hourgrid-scroll'), 32);
+
+    // Expenses view's own column-header row — stacks directly below the primary sticky header, same
+    // as the Week/Day rows above. Per explicit user request, 2026-08-25.
+    document.querySelectorAll('#vacation-expenses-table thead th').forEach(th => {
+        th.style.top = `${primaryHeight}px`;
+    });
 }
 
 if (typeof window !== 'undefined') {
@@ -25617,6 +25656,7 @@ function renderVacationTab() {
 // reference.
 function relocateMobileVacationStickyHeader() {
     const detailsCard = document.getElementById('vacation-mobile-hero-details-card');
+    const heroCard = document.getElementById('vacation-trip-hero-card');
     const titleBlock = document.getElementById('vacation-hero-title-block');
     const topRow = document.getElementById('vacation-hero-top-row');
     const metaEl = document.getElementById('vacation-trip-meta');
@@ -25625,7 +25665,9 @@ function relocateMobileVacationStickyHeader() {
     const summaryGrid = document.querySelector('.vacation-summary-grid');
     const toolbarCard = document.getElementById('vacation-toolbar-card');
     const perksCard = document.getElementById('vacation-cruise-perks-summary-card');
-    if (!detailsCard || !titleBlock || !topRow || !metaEl || !notesEl || !actionsHost || !summaryGrid || !toolbarCard) return;
+    const navButtons = document.getElementById('vacation-trip-nav-buttons');
+    const viewToggle = document.getElementById('vacation-view-toggle');
+    if (!detailsCard || !heroCard || !titleBlock || !topRow || !metaEl || !notesEl || !actionsHost || !summaryGrid || !toolbarCard || !navButtons || !viewToggle) return;
 
     const shouldRelocate = isMobileViewport() && document.body.dataset.activeTab === 'vacation';
     if (shouldRelocate) {
@@ -25637,12 +25679,18 @@ function relocateMobileVacationStickyHeader() {
         let afterAnchor = detailsCard;
         if (perksCard) { afterAnchor.insertAdjacentElement('afterend', perksCard); afterAnchor = perksCard; }
         afterAnchor.insertAdjacentElement('afterend', toolbarCard);
+        // Trip Prev/Next/+Add Trip/Edit Trip/Travel Documents move INTO the sticky header, as their
+        // own row directly below the icon+trip-name row — per explicit user request, 2026-08-25.
+        // heroCard's only other child at this point is topRow (icon+name), so appendChild lands this
+        // right after it.
+        heroCard.appendChild(navButtons);
     } else {
         detailsCard.style.display = 'none';
         titleBlock.insertAdjacentElement('afterend', metaEl);
         metaEl.insertAdjacentElement('afterend', notesEl);
         topRow.appendChild(actionsHost);
         topRow.appendChild(summaryGrid);
+        viewToggle.insertAdjacentElement('beforebegin', navButtons);
     }
 }
 
@@ -27007,6 +27055,7 @@ function genVacationId(prefix) {
 }
 
 function setupVacationEventListeners() {
+    document.getElementById('btn-vacation-day-add-transaction')?.addEventListener('click', openVacationDayQuickAddModal);
     const tripSelect = document.getElementById('vacation-trip-select');
     // Switching WHICH trip is selected resets the Week view's anchor to the new trip's own start
     // date — staying on whatever week the PREVIOUS trip happened to be showing would almost always
