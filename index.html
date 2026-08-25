@@ -1579,7 +1579,7 @@
                                             <label>Transaction Type</label>
                                             <div class="direction-toggle-group" id="vacation-quick-direction-toggle">
                                                 <button type="button" class="direction-btn active-charge" data-direction="charge">Charge</button>
-                                                <button type="button" class="direction-btn" data-direction="deposit">Credit</button>
+                                                <button type="button" class="direction-btn" data-direction="credit">Credit</button>
                                                 <input type="hidden" id="vacation-quick-direction" value="charge">
                                             </div>
                                         </div>
@@ -1953,7 +1953,15 @@
                                          sits directly under the search box specifically, not spanning the
                                          full header width. Per explicit user request, 2026-08-04. -->
                                     <div class="cc-list-search-group" style="display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-width: 220px;">
-                                        <input type="search" id="cc-list-filter-text" class="custom-input" placeholder="🔍 Search merchant, description, owner, trip, date, amount..." style="margin: 0; width: 100%;">
+                                        <!-- #cc-list-search-row: stable wrapper so relocateMobileCCListViewControls()
+                                             (app.js) can move the Clear button in here next to the search input on
+                                             mobile, mirroring #list-view-search-row / #savings-list-search-row — the
+                                             search input's own flex:1;min-width:0 is what actually lets it shrink to
+                                             share the row with Clear once it moves in. Per explicit user request,
+                                             2026-08-25. -->
+                                        <div id="cc-list-search-row" style="display: flex; gap: 0.5rem; align-items: center; width: 100%;">
+                                            <input type="search" id="cc-list-filter-text" class="custom-input" placeholder="🔍 Search merchant, description, owner, trip, date, amount..." style="margin: 0; flex: 1; min-width: 0;">
+                                        </div>
                                         <!-- Single line, left-justified on desktop (see .cc-list-search-group /
                                              #cc-filter-summary rules in index.css) — only wraps below the mobile
                                              breakpoint, where screen width actually requires it. Per explicit
@@ -1973,8 +1981,12 @@
                                          filter-tools row below) replaces +Transaction on Loans specifically
                                          — a loan's ledger only ever takes payments, never arbitrary
                                          transactions — see renderCardDashboard()'s isLoan toggle in app.js.
-                                         Per explicit user request, 2026-08-05. -->
-                                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-left: auto;">
+                                         Per explicit user request, 2026-08-05.
+                                         #cc-list-header-actions: stable id so relocateMobileCCListViewControls()
+                                         (app.js) can move +Transaction/+Payment/Clear out on mobile (and restore
+                                         them here on desktop) — mirrors #list-view-header-actions /
+                                         #savings-list-header-actions. Per explicit user request, 2026-08-25. -->
+                                    <div id="cc-list-header-actions" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-left: auto;">
                                         <button type="button" class="action-btn small-btn solid-btn" id="btn-open-cclist-add-modal">+ Transaction</button>
                                         <button type="button" class="action-btn small-btn solid-btn hidden" id="btn-add-loan-payment" title="Post an additional payment to this loan">+ Payment</button>
                                         <button type="button" class="action-btn small-btn outline-btn" id="btn-export-cc-list-csv" title="Export the currently visible rows (respects search/filters) as a CSV file, openable in Excel">⬇ Download CSV</button>
@@ -3346,6 +3358,43 @@
                 <button type="button" class="action-btn outline-btn" id="btn-cancel-vacation-actual-entry">Cancel</button>
                 <button type="button" class="action-btn danger-btn hidden" id="btn-delete-vacation-actual-entry">Delete</button>
                 <button type="submit" class="action-btn solid-btn">Save Entry</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Edits a trip.actualCharges[] entry — the itemized transaction that actually mirrors into the
+         checking/credit-card ledgers once "Use Actual Charges" is on (see getVacationChargesForSource()/
+         syncVacationMasterCardCharges() in app.js). Distinct from vacation-actual-entry-dialog above,
+         which only edits a non-prepaid category's own spend tally (category.actualEntries) and never
+         touches the ledger. Opened via double-clicking the charge's chip/block on the Day or Week grid. -->
+    <dialog id="vacation-actual-charge-dialog" class="glass-modal">
+        <form method="dialog" id="vacation-actual-charge-form">
+            <h3>Edit Actual Charge</h3>
+            <input type="hidden" id="vacation-actual-charge-id">
+            <div class="form-row">
+                <div class="form-group"><label for="vacation-actual-charge-date">Date</label><input type="date" id="vacation-actual-charge-date" required class="custom-input"></div>
+                <div class="form-group"><label for="vacation-actual-charge-source">Payment Source</label><select id="vacation-actual-charge-source" class="custom-select"></select></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label for="vacation-actual-charge-start-time">Start Time</label><input type="time" id="vacation-actual-charge-start-time" class="custom-input"></div>
+                <div class="form-group"><label for="vacation-actual-charge-end-time">End Time</label><input type="time" id="vacation-actual-charge-end-time" class="custom-input"></div>
+            </div>
+            <div class="form-group"><label for="vacation-actual-charge-merchant">Merchant</label><input type="text" id="vacation-actual-charge-merchant" class="custom-input"></div>
+            <div class="form-group"><label for="vacation-actual-charge-description">Description</label><input type="text" id="vacation-actual-charge-description" class="custom-input" required></div>
+            <div class="form-group"><label for="vacation-actual-charge-category">Expense Category</label><select id="vacation-actual-charge-category" class="custom-select"></select></div>
+            <div class="form-group">
+                <label>Transaction Type</label>
+                <div class="direction-toggle-group" id="vacation-actual-charge-direction-toggle">
+                    <button type="button" class="direction-btn active-charge" data-direction="charge">Charge</button>
+                    <button type="button" class="direction-btn" data-direction="credit">Credit</button>
+                    <input type="hidden" id="vacation-actual-charge-direction" value="charge">
+                </div>
+            </div>
+            <div class="form-group"><label for="vacation-actual-charge-amount">Amount</label><div class="input-prefix-wrapper"><span class="input-prefix">$</span><input type="number" step="0.01" min="0.01" id="vacation-actual-charge-amount" required class="custom-input"></div></div>
+            <div class="modal-buttons">
+                <button type="button" class="action-btn outline-btn" id="btn-cancel-vacation-actual-charge">Cancel</button>
+                <button type="button" class="action-btn danger-btn" id="btn-delete-vacation-actual-charge">Delete</button>
+                <button type="submit" class="action-btn solid-btn">Save Charge</button>
             </div>
         </form>
     </dialog>
