@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 08:12';
+const BUILD_VERSION = '2026-08-25 08:34';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -11411,6 +11411,31 @@ function relocateMobileDashboardListViewControls() {
     }
 }
 
+// Savings Tracker's own list-view ledger header, mobile only: identical restructuring to
+// relocateMobileDashboardListViewControls() above, just for #savings-list-sticky-header's controls
+// instead of #dashboard-list-view's — the ledger title/search/filter-pill block stops being pinned
+// (see the matching mobile override on .list-view-sticky-header in index.css) and scrolls away
+// normally; only "+ Transaction" stays pinned, relocated to sit directly below the year/month/day
+// date-nav inside .main-sticky-dashboard. Clear moves to sit next to the search box in
+// #savings-list-search-row instead. Per explicit user request, 2026-08-25.
+function relocateMobileSavingsListViewControls() {
+    const periodNav = document.getElementById('header-period-nav');
+    const addBtn = document.getElementById('btn-open-savings-add-modal');
+    const clearBtn = document.getElementById('btn-reset-savingslist-filters');
+    const searchRow = document.getElementById('savings-list-search-row');
+    const headerActions = document.getElementById('savings-list-header-actions');
+    if (!periodNav || !addBtn || !clearBtn || !searchRow || !headerActions) return;
+
+    const shouldRelocate = isMobileViewport() && document.body.dataset.activeTab === 'savings';
+    if (shouldRelocate) {
+        periodNav.insertAdjacentElement('afterend', addBtn);
+        searchRow.appendChild(clearBtn);
+    } else {
+        headerActions.insertAdjacentElement('afterbegin', addBtn);
+        headerActions.appendChild(clearBtn);
+    }
+}
+
 // Per explicit user request, 2026-08-04: on the mobile loan/card detail page, pin just the title
 // and date-nav at the top while scrolling, with the account dropdown, Payment/Statement, Month/Year
 // scope toggle, and stat-chip bubbles scrolling away normally below instead of also being pinned.
@@ -11791,6 +11816,7 @@ function renderAppImmediate() {
     relocateMobileStickyHeader();
     relocateMobileBilltrackerToggles();
     relocateMobileDashboardListViewControls();
+    relocateMobileSavingsListViewControls();
     populateCheckingAutocomplete();
     populateCCDropdowns();
     renderSummaryCards();
@@ -21444,10 +21470,24 @@ function _updateListViewStickyOffset() {
     let savingsHeaderHeight = 0;
     if (savingsHeader) {
         savingsHeader.style.top = `${dashboardHeight}px`;
-        savingsHeaderHeight = savingsHeader.getBoundingClientRect().height;
+        // Same live sticky check as Personal/Joint above — on mobile this header is no longer
+        // sticky (relocateMobileSavingsListViewControls()/its matching index.css override), so its
+        // full unstuck height must not be counted into the table headers' own offset below.
+        const savingsHeaderIsSticky = getComputedStyle(savingsHeader).position === 'sticky';
+        savingsHeaderHeight = savingsHeaderIsSticky ? savingsHeader.getBoundingClientRect().height : 0;
     }
     const savingsTableHeaders = document.querySelectorAll('#savings-list-view .data-table th');
     savingsTableHeaders.forEach(th => {
+        th.style.top = `${dashboardHeight + savingsHeaderHeight}px`;
+    });
+
+    // Yearly Savings Summary's own column-header row (Month/Transfers In/Withdrawals/...) — stacks
+    // at the same offset as the ledger table's headers above (dashboardHeight + savingsHeaderHeight,
+    // which is just dashboardHeight on mobile now that savingsHeader itself is no longer sticky
+    // there). position:sticky handles the two tables taking turns being visible natively — each only
+    // "wins" while its own rows are actually scrolling through that exact offset. Per explicit user
+    // request, 2026-08-25.
+    document.querySelectorAll('#savings-year-summary-content .data-table thead th').forEach(th => {
         th.style.top = `${dashboardHeight + savingsHeaderHeight}px`;
     });
 }
