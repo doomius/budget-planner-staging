@@ -1112,7 +1112,10 @@
                             <!-- Toolbar Card: Trip Selector & View Navigation (Yellow Outlined Box) -->
                             <div class="glass-card" id="vacation-toolbar-card" style="margin-bottom: 0;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                    <div id="vacation-trip-nav-buttons" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                        <!-- Hidden (not removed — renderVacationTab()/setupVacationEventListeners() still read/write
+                                             its value and options) per explicit user request, 2026-08-25: redundant now that Prev/Next
+                                             plus the trip name itself in the sticky header cover picking a trip. See index.css. -->
                                         <select class="custom-select" id="vacation-trip-select" style="font-weight: 700; font-size: 1.05rem; min-width: 220px;"></select>
                                         <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-prev-trip" title="Previous trip">&larr; Prev</button>
                                         <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-next-trip" title="Next trip">Next &rarr;</button>
@@ -1499,15 +1502,24 @@
                                     </select>
                                     <input type="date" id="vacation-day-date-picker" class="custom-input" style="padding:0.25rem 0.5rem;">
                                     <button type="button" class="action-btn small-btn solid-btn" id="btn-vacation-day-save-date">Save Changes</button>
+                                    <!-- Prev/Next Day's text label is wrapped so mobile CSS can hide it, leaving just the
+                                         arrow glyph — shorter buttons per explicit user request, 2026-08-25. First/Last
+                                         Day get an explicit flex `order` on mobile (see index.css) to visually land after
+                                         the Prev/Next arrows without needing to move them in the DOM. -->
+                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-prev-day">&larr;<span class="vacation-day-nav-btn-label"> Prev Day</span></button>
+                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-next-day"><span class="vacation-day-nav-btn-label">Next Day </span>&rarr;</button>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-day-jump-first-day">First Day</button>
-                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-prev-day">&larr; Prev Day</button>
-                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-next-day">Next Day &rarr;</button>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-day-jump-last-day">Last Day</button>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-day-zoom-out" title="Zoom out (fewer, hourly-only gridlines)">🔍− Zoom Out</button>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-day-zoom-in" title="Zoom in (15-minute gridlines)">🔍+ Zoom In</button>
                                 </div>
                             </div>
                             <div class="vacation-day-view-container">
+                                <!-- Mobile-only alternative to the inline Quick Log card below it — per explicit user
+                                     request, 2026-08-25, same "button opens the real form in a popup instead of it
+                                     sitting inline full-time" pattern already used for the Dashboard/Savings/Card
+                                     ledgers (see openMobileQuickAddModal()). Desktop keeps the inline card as-is. -->
+                                <button type="button" class="action-btn solid-btn full-width vacation-day-add-transaction-btn" id="btn-vacation-day-add-transaction">+ Add Transaction</button>
                                 <div class="glass-card vacation-day-quick-add-card">
                                     <h4 class="vacation-day-quick-add-header">Quick Log Actual Transaction</h4>
                                     <div class="vacation-day-quick-add-scroll">
