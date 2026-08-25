@@ -4863,8 +4863,15 @@ body.is-mobile-screen .savings-summary-cards,
        content is the table, already handled by its own .table-responsive wrapper, and giving the
        outer card its own overflow-x:auto has the same overflow-y:auto forcing side effect
        documented on body/.tab-view above, which would otherwise defeat .list-view-sticky-wrapper's
-       position:sticky on exactly the screens (mobile) where it matters most. */
-body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card) {
+       position:sticky on exactly the screens (mobile) where it matters most.
+       .vacation-day-grid-wrapper is excluded for the identical reason — it has its own explicit
+       `overflow: visible` (~1002) specifically to keep #vacation-day-allday-row's position:sticky
+       tied to the real page scroll (see that rule's own comment for the 2026-08-14 bug this was
+       written to fix) — this broad mobile rule was silently re-breaking that exact fix by forcing
+       overflow-y back to auto on mobile specifically. Confirmed real regression via an annotated
+       screenshot, 2026-08-25 (the All-Day row rendering mid-scroll instead of stuck under the date
+       nav row). */
+body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card):not(.vacation-day-grid-wrapper) {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
     }
@@ -5718,6 +5725,32 @@ body.is-mobile-screen[data-active-tab="dashboard"] .main-sticky-dashboard #btn-o
         width: 100%;
         box-sizing: border-box;
     }
+/* Savings Tracker's own list-view ledger header — identical treatment to Dashboard's three rules
+   above, just for #savings-list-sticky-header's controls (see relocateMobileSavingsListViewControls()
+   in app.js). Per explicit user request, 2026-08-25. */
+body.is-mobile-screen[data-active-tab="savings"] .list-view-sticky-header {
+        position: static !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+body.is-mobile-screen[data-active-tab="savings"] #savings-list-header-actions {
+        display: none !important;
+    }
+body.is-mobile-screen[data-active-tab="savings"] .main-sticky-dashboard #btn-open-savings-add-modal {
+        width: 100%;
+        box-sizing: border-box;
+    }
+/* Yearly Savings Summary's own column-header row (Month/Transfers In/Withdrawals/...) — stacks at
+   the same offset as the ledger table's headers (top set dynamically by _updateListViewStickyOffset()
+   in app.js, which already targeted this table but had nothing to stick it in the first place — the
+   table's base rule is plain position:static, same underlying gap as the Vacation Day View's date-nav
+   row before its own fix). Per explicit user request, 2026-08-25. */
+#savings-year-summary-content .data-table thead th {
+    position: sticky;
+    z-index: 94;
+    background: #0d111e;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
 /* The trip select dropdown is redundant now that Prev/Next plus the trip name itself (in the
    sticky header) already cover picking a trip — hidden on every screen size, not just mobile, per
    explicit user request, 2026-08-25. Not removed from the DOM: renderVacationTab() bails out
@@ -5771,12 +5804,17 @@ body.is-mobile-screen #vacation-quick-start-time,
 body.is-mobile-screen[data-active-tab="vacation"] .vacation-day-nav-btn-label {
         display: none;
     }
-body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-timezone-select { order: 1; }
-body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-date-picker { order: 2; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-save-date { order: 3; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-prev-day { order: 4; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-next-day { order: 5; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-first-day { order: 6; }
+/* Reordered per explicit user request, 2026-08-25: Save Changes moved to sit right after the date
+   field (its own row was previously claimed first by the wide timezone select, per an annotated
+   screenshot — putting date+Save first in source order gives that pair first claim on row 1's
+   width instead). First/Last Day now bookend the Prev/Next arrows (First Day before, Last Day
+   after) rather than both trailing after them. */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-date-picker { order: 1; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-save-date { order: 2; }
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-timezone-select { order: 3; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-first-day { order: 4; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-prev-day { order: 5; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-next-day { order: 6; }
 body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-last-day { order: 7; }
 body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-out,
     body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-in {
@@ -5810,11 +5848,12 @@ body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-view-month {
    background stopped short of each edge and let scrolled content show through in those two side
    strips — most visibly right where they cross the notch/Dynamic Island. #vacation-sticky-header-
    container is Vacation Planner's own separate sticky wrapper (not .main-sticky-dashboard); the
-   Savings and Credit Cards/Loans ledger list-view headers (.list-view-sticky-header) stay sticky on
-   mobile too (unlike Dashboard's, which went static — see its own dashboard-scoped override above —
-   so it's deliberately excluded here). */
+   Credit Cards/Loans ledger list-view header (.list-view-sticky-header) stays sticky on mobile too.
+   Savings' own list-view header used to be listed here too, but per explicit user request,
+   2026-08-25, it went static like Dashboard's (see its own dashboard-scoped override, and the
+   matching one for Savings below) — full-bleed no longer applies to it since it doesn't stay pinned
+   at the top edge anymore. */
 body.is-mobile-screen[data-active-tab="vacation"] #vacation-sticky-header-container,
-    body.is-mobile-screen[data-active-tab="savings"] .list-view-sticky-header,
     body.is-mobile-screen[data-active-tab="creditcards"] .list-view-sticky-header,
     body.is-mobile-screen[data-active-tab="loans"] .list-view-sticky-header {
         margin-left: -1.5rem !important;
