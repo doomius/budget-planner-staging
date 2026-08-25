@@ -4419,6 +4419,24 @@ body.maximized-calendar #vacation-cruise-perks-summary-card {
 #savings-list-view .table-responsive {
     overflow: visible !important;
 }
+/* Same fix, same reasoning, for the Yearly Savings Summary table's OWN separate .table-responsive
+   instance — the ledger table above got this fix on 2026-08-05, but this is a different table
+   entirely and had never gotten it, so its own sticky thead th (#savings-year-summary-content
+   .data-table thead th, ~5768) could never actually engage: it just kept sliding down through the
+   tbody at its natural (non-sticky) position no matter how far the page scrolled, since this
+   .table-responsive's own overflow-x:auto silently forced its overflow-y to auto too, making it its
+   own independent scroll container disconnected from the real page scroll. Confirmed real bug via
+   two more annotated screenshots after the .glass-card-level fix above (2026-08-25) still didn't
+   resolve it — this .table-responsive-level ancestor was the actual remaining culprit. */
+#savings-year-summary-content .table-responsive {
+    overflow: visible !important;
+}
+/* Same fix again for Vacation Planner's Expenses table — found via the same audit, before it could
+   surface as yet another bug report. #vacation-expenses-table's own sticky thead th (~745) has the
+   identical unfixed-.table-responsive-ancestor problem. */
+#vacation-expenses-card .table-responsive {
+    overflow: visible !important;
+}
 /* The overflow fix above was the missing piece for measuring/positioning correctly, but the actual
    sticky pin only works if the <th> elements are themselves position:sticky — that part was never
    added for Savings, unlike the matching #list-view-table-container/#cc-list-view-table-container
