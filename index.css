@@ -4880,8 +4880,16 @@ body.is-mobile-screen .savings-summary-cards,
        #vacation-expenses-card (the plain .glass-card wrapping #vacation-expenses-table) is excluded
        preemptively for the identical reason, found via audit rather than a third bug report — same
        shape exactly: a .glass-card with a sticky thead th descendant (~1085) and no exclusion class
-       of its own. */
-body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card):not(.vacation-day-grid-wrapper):not(#savings-list-view):not(#vacation-expenses-card) {
+       of its own.
+       .savings-year-summary-card and .delivery-year-summary-card are excluded for the identical
+       reason too — found via a systematic audit of every position:sticky rule in this file after
+       .savings-year-summary-card's own bug got reported a second time (the first fix only covered
+       #savings-list-view, the ledger table above it — this is a SEPARATE card with the exact same
+       gap). .delivery-year-summary-card was a real, pre-existing instance of this bug too, unrelated
+       to any of the 2026-08-25 mobile-nav work — its own sticky .table-card-header (~4765,
+       "Sticky Pinning for Yearly Weekly Delivery Summary Header") had silently never worked on
+       mobile. */
+body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card):not(.vacation-day-grid-wrapper):not(#savings-list-view):not(#vacation-expenses-card):not(.savings-year-summary-card):not(.delivery-year-summary-card) {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
     }
