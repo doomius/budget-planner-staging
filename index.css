@@ -1404,6 +1404,26 @@ label {
     box-sizing: border-box !important;
     padding-right: 1.8rem !important;
 }
+/* On mobile, skip the JS text-overlay/showPicker() trick entirely and let the real, native
+   <input type="date"> be the visible, directly-tappable control — two rounds of trying to make the
+   overlay's "📅" button reliably re-trigger the native picker via showPicker() (2026-08-25 twice)
+   still didn't work on the user's actual device ("nothing happens... same as before"). A real,
+   visible date input is guaranteed to open the OS's own calendar picker on tap — no JS involved,
+   nothing that can silently fail — which is exactly what was asked for ("click in the field... it
+   shows the date selector where I can select the date from an actual calendar"). Desktop keeps the
+   mm/dd/yy overlay (typing + small picker-icon), where the underlying showPicker() issue never
+   arose in the first place. */
+body.is-mobile-screen .ddmmyy-wrapper input[type="date"] {
+        position: static !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 100% !important;
+        height: auto !important;
+    }
+body.is-mobile-screen .ddmmyy-wrapper input[type="text"],
+    body.is-mobile-screen .ddmmyy-picker-btn {
+        display: none !important;
+    }
 .ddmmyy-picker-btn {
     position: absolute;
     right: 0.35rem;
