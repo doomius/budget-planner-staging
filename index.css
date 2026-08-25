@@ -1417,6 +1417,15 @@ label {
     font-size: 0.95rem;
     cursor: pointer;
     opacity: 0.75;
+    /* Without these, iOS Safari treated a tap on the emoji glyph as a text-selection gesture —
+       showing the Copy/Look Up callout instead of firing a click on the button at all. Confirmed
+       real bug, 2026-08-25 ("all I can do is select the icon to copy"), app-wide since every date
+       field uses this same button. touch-action:manipulation additionally removes the ~300ms
+       double-tap-to-zoom delay some mobile browsers add before dispatching the click. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
 }
 .ddmmyy-picker-btn:hover { opacity: 1; }
 
