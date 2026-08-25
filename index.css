@@ -4870,8 +4870,18 @@ body.is-mobile-screen .savings-summary-cards,
        written to fix) — this broad mobile rule was silently re-breaking that exact fix by forcing
        overflow-y back to auto on mobile specifically. Confirmed real regression via an annotated
        screenshot, 2026-08-25 (the All-Day row rendering mid-scroll instead of stuck under the date
-       nav row). */
-body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card):not(.vacation-day-grid-wrapper) {
+       nav row).
+       #savings-list-view is excluded for the same reason again — it's a plain .glass-card (never
+       given the .list-view-card class Dashboard's equivalent container has, which is what actually
+       exempted THAT one from this same rule), so it was silently getting overflow-x:auto too,
+       breaking its own #savings-list-view .data-table thead th sticky header (~4429) the exact same
+       way. Confirmed real regression via a second annotated screenshot, 2026-08-25 — computed
+       overflow-y measured literally "auto" on this element on mobile before this exclusion.
+       #vacation-expenses-card (the plain .glass-card wrapping #vacation-expenses-table) is excluded
+       preemptively for the identical reason, found via audit rather than a third bug report — same
+       shape exactly: a .glass-card with a sticky thead th descendant (~1085) and no exclusion class
+       of its own. */
+body.is-mobile-screen .glass-card:not(.delivery-grid-card):not(.list-view-card):not(.vacation-day-grid-wrapper):not(#savings-list-view):not(#vacation-expenses-card) {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
     }
