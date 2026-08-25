@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 14:00';
+const BUILD_VERSION = '2026-08-25 15:50';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -5084,7 +5084,29 @@ function parseFormula(value) {
 // zoomed-in desktop window stays in desktop mode while a genuinely small device (or a real narrow
 // window on it) still gets mobile layout.
 function isMobileViewport() {
-    return window.screen.width <= 900;
+    // window.screen.width alone (the physical monitor's resolution) never changes when the user
+    // just resizes/"minimizes" a desktop BROWSER WINDOW narrower — it only reflects a genuinely
+    // small physical device. Confirmed real complaint, 2026-08-25: resizing the window down to
+    // tablet width kept showing the full desktop sidebar+layout, squished into the narrow window,
+    // instead of the mobile-style layout the user expected at that width.
+    // window.outerWidth (the browser window's own actual pixel width) DOES track real window
+    // resizing — and unlike window.innerWidth, it stays stable across page zoom (Ctrl/Cmd +/-),
+    // which is exactly the failure mode screen.width was introduced to avoid in the first place
+    // (2026-08-09: zooming in on a desktop browser used to incorrectly flip the whole app into
+    // mobile layout via a plain viewport-width media query). Taking whichever of the two is smaller
+    // catches both real cases (a genuinely small physical screen, or a narrowed/tablet-width window
+    // on a large monitor) while zoom alone moves neither number.
+    // outerWidth reports 0 in some cross-origin iframe embeds (this app is sometimes embedded in a
+    // Google Sites iframe) — falls back to screen.width alone there rather than letting a bogus 0
+    // force mobile layout permanently.
+    const outer = window.outerWidth;
+    const effectiveWidth = outer > 0 ? Math.min(window.screen.width, outer) : window.screen.width;
+    // Threshold left at 900, matching the large pre-existing base of real `@media (max-width:900px)`
+    // rules elsewhere in index.css that this JS-driven check was only ever meant to layer on top of
+    // for specific features (see this function's own history) — raising it without auditing every
+    // one of those raw breakpoints too would open a gap between 901-1024px where JS says "mobile" but
+    // the base responsive CSS doesn't, producing a broken hybrid layout instead of a clean one.
+    return effectiveWidth <= 900;
 }
 
 // Keeps the CSS-facing `.is-mobile-screen` class on <body> in sync with isMobileViewport() — every
