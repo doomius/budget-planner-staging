@@ -725,6 +725,27 @@ body[data-active-tab="loans"] .main-sticky-dashboard {
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--glass-border);
 }
+/* Expenses view's own column-header row (Category/Type/Budget-Plan/Actual/Status/Actions) — stacks
+   directly below #vacation-sticky-header-container, same stacking pattern as the Week/Day view rows
+   above (top set dynamically via _updateVacationStickyOffsets() in app.js, not here). Per explicit
+   user request, 2026-08-25. */
+#vacation-expenses-table thead th {
+    position: sticky;
+    z-index: 44;
+    background: #0d111e;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+/* Day View's own date-nav row (timezone/date-picker/Save/Prev-Next-First-Last Day/Zoom) — stacks
+   directly below #vacation-sticky-header-container, same as the Expenses/Week rows above (top set
+   dynamically via _updateVacationStickyOffsets(), which already targeted this element for the
+   `top` offset but had nothing to stick it in the first place — .table-card-header's base rule is
+   plain position:static). Per explicit user request, 2026-08-25. */
+#vacation-day-layout .table-card-header {
+    position: sticky;
+    z-index: 44;
+    background: #0d111e;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
 .vacation-week-header-cell {
     text-align: center;
     padding: 0.5rem 0.25rem;
@@ -5685,6 +5706,84 @@ body.is-mobile-screen[data-active-tab="dashboard"] .main-sticky-dashboard #btn-o
         width: 100%;
         box-sizing: border-box;
     }
+/* The trip select dropdown is redundant now that Prev/Next plus the trip name itself (in the
+   sticky header) already cover picking a trip — hidden on every screen size, not just mobile, per
+   explicit user request, 2026-08-25. Not removed from the DOM: renderVacationTab() bails out
+   entirely if this element is missing (its own `if (!tripSelect) return` guard), and both it and
+   setupVacationEventListeners() still read/write its value and options every render. */
+#vacation-trip-select {
+    display: none !important;
+}
+/* #vacation-trip-nav-buttons (Prev/Next/+Add Trip/Edit Trip/Travel Documents), mobile only: once
+   relocateMobileVacationStickyHeader() (app.js) moves it into #vacation-trip-hero-card as its own
+   row below the icon+trip-name row, it needs a bit of top spacing and to wrap sensibly at phone
+   width — the desktop layout (a wide single row sharing space with the Expenses/Itinerary/etc.
+   segmented control) has no equivalent gap needed since it's a sibling row there, not a second line
+   under the title. Per explicit user request, 2026-08-25. */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-trip-nav-buttons {
+        margin-top: 0.6rem;
+        width: 100%;
+    }
+/* Day View date-nav row, mobile only, per explicit user request, 2026-08-25: Prev/Next Day show
+   just their arrow glyph (see .vacation-day-nav-btn-label below), First Day moves to sit right
+   after the Next Day arrow instead of before Prev Day, and Zoom In/Out disappear entirely — desktop
+   keeps the full labeled buttons and zoom controls unchanged. Explicit `order` on every button in
+   this row (not just the ones that moved) so the flex-wrap reflow is unambiguous regardless of
+   source order. */
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-day-nav-btn-label {
+        display: none;
+    }
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-timezone-select { order: 1; }
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-date-picker { order: 2; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-save-date { order: 3; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-prev-day { order: 4; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-next-day { order: 5; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-first-day { order: 6; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-last-day { order: 7; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-out,
+    body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-in {
+        display: none;
+    }
+/* "+ Add Transaction" button vs. the inline Quick Log card it replaces on mobile — desktop shows the
+   inline card and hides the button (it has plenty of room for the card); mobile shows the button and
+   hides the card (see openVacationDayQuickAddModal() in app.js for what the button opens). Per
+   explicit user request, 2026-08-25. */
+.vacation-day-add-transaction-btn {
+    display: none;
+}
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-day-add-transaction-btn {
+        display: block;
+        margin-bottom: 0.75rem;
+    }
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-day-quick-add-card {
+        display: none;
+    }
+/* Month calendar view removed on mobile — unreadable at phone width, same precedent as every other
+   Calendar/List toggle removal (#header-view-toggle-host etc.) — per explicit user request,
+   2026-08-25. enforceMobileListView() (app.js) falls state.vacationViewMode back to 'week' so
+   nothing is left stranded on a now-unreachable mode with no way back. */
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-view-month {
+        display: none;
+    }
+/* Full-bleed every remaining mobile sticky page/list header out to the true viewport edges — same
+   fix as .main-sticky-dashboard's own (~5661), extended per explicit user request, 2026-08-25
+   ("make sure all pages have this extended box"). Each of these sits inside .app-main's 1.5rem
+   mobile padding (~3581) same as .main-sticky-dashboard did, so without this their opaque
+   background stopped short of each edge and let scrolled content show through in those two side
+   strips — most visibly right where they cross the notch/Dynamic Island. #vacation-sticky-header-
+   container is Vacation Planner's own separate sticky wrapper (not .main-sticky-dashboard); the
+   Savings and Credit Cards/Loans ledger list-view headers (.list-view-sticky-header) stay sticky on
+   mobile too (unlike Dashboard's, which went static — see its own dashboard-scoped override above —
+   so it's deliberately excluded here). */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-sticky-header-container,
+    body.is-mobile-screen[data-active-tab="savings"] .list-view-sticky-header,
+    body.is-mobile-screen[data-active-tab="creditcards"] .list-view-sticky-header,
+    body.is-mobile-screen[data-active-tab="loans"] .list-view-sticky-header {
+        margin-left: -1.5rem !important;
+        margin-right: -1.5rem !important;
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+    }
 /* Bills & Expenses (billtracker tab), mobile — per explicit user request, 2026-08-04: no Calendar
        sub-view on mobile (matches every other page's Calendar/List removal, same "no calendar option
        on a phone" reasoning), and the Hide button for the whole Cards/List/Calendar content area is
@@ -6505,5 +6604,3 @@ body.is-mobile-screen #joint-expenses-content .data-table th,
     .mobile-row-detail-overlay { align-items: center; }
     .mobile-row-detail-card { border-radius: 16px; }
 }
-
-
