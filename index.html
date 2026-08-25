@@ -1061,9 +1061,20 @@
                                 <!-- Top Half: Trip Logo/Icon + Title + Subtitle Meta AND Action Host (Expand View button) -->
                                 <div id="vacation-hero-top-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
                                     <div id="vacation-hero-title-block">
-                                        <div id="vacation-trip-title-row" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                        <!-- No flex-wrap here — a long trip name used to move the WHOLE title down to a new
+                                             line below the icon (flex-wrap:wrap wraps entire flex items, not text) instead
+                                             of staying beside the icon and wrapping its own text within the row. The h2's
+                                             flex:1;min-width:0 below is what actually lets it shrink to the remaining width
+                                             and text-wrap in place. Confirmed real bug via an annotated screenshot,
+                                             2026-08-25. -->
+                                        <div id="vacation-trip-title-row" style="display: flex; align-items: center; gap: 0.75rem;">
                                             <span id="vacation-trip-icon-badge"></span>
-                                            <h2 id="vacation-trip-name" style="margin: 0; font-size: 1.35rem; font-weight: 700; color: var(--text-color, #f8fafc);"></h2>
+                                            <h2 id="vacation-trip-name" style="margin: 0; font-size: 1.35rem; font-weight: 700; color: var(--text-color, #f8fafc); flex: 1 1 auto; min-width: 0; overflow-wrap: break-word;"></h2>
+                                            <!-- Mobile only (see index.css) — collapses #vacation-trip-nav-buttons (the
+                                                 Prev/Next/+Add Trip/Edit Trip/Travel Documents row relocated into this
+                                                 sticky header) to reclaim the vertical space it takes up permanently.
+                                                 Per explicit user request, 2026-08-25. -->
+                                            <button type="button" class="action-btn small-btn outline-btn vacation-trip-nav-toggle-btn" id="btn-toggle-vacation-trip-nav" style="flex-shrink: 0;">Hide</button>
                                         </div>
                                         <div class="muted-text" id="vacation-trip-meta" style="margin-top: 0.35rem; font-size: 0.875rem; font-weight: 500; color: #94a3b8;"></div>
                                         <p id="vacation-trip-notes" class="muted-text" style="margin-top: 0.35rem; margin-bottom: 0; white-space: pre-wrap; font-size: 0.85rem; display: none;"></p>
@@ -1429,8 +1440,11 @@
                                         </optgroup>
                                     </select>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-week-jump-trip">First Day</button>
-                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-prev-week">&larr; Prev Week</button>
-                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-next-week">Next Week &rarr;</button>
+                                    <!-- Text label wrapped so mobile CSS can hide it, leaving just the arrow — same
+                                         pattern as the Day View's Prev/Next Day buttons. Per explicit user request,
+                                         2026-08-25 ("just arrows... to load the next or previous 3 days"). -->
+                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-prev-week">&larr;<span class="vacation-day-nav-btn-label"> Prev Week</span></button>
+                                    <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-next-week"><span class="vacation-day-nav-btn-label">Next Week </span>&rarr;</button>
                                     <button type="button" class="action-btn small-btn outline-btn" id="btn-vacation-week-jump-last-day">Last Day</button>
                                 </div>
                             </div>
