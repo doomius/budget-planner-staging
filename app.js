@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 13:50';
+const BUILD_VERSION = '2026-08-25 14:00';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -4891,6 +4891,20 @@ function enhanceDateInput(input) {
     display.addEventListener('blur', tryParseTyped);
     display.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); tryParseTyped(); }
+    });
+    // Auto-inserts the mm/dd/yy slashes as digits are typed — inputMode="numeric" (above) shows a
+    // digits-only keypad on mobile with no '/' key at all, so without this a phone user had no way
+    // to type a full date manually if the picker button also failed to open (confirmed real
+    // complaint, 2026-08-25: "I cannot enter a slash from phone...only numbers"). Derives the
+    // formatted value fresh from digits-only every keystroke rather than trying to track cursor
+    // position around inserted slashes — same simplification every credit-card-expiry-style input
+    // makes; the trade-off (backspacing "through" an auto-inserted slash doesn't remove a digit) is
+    // standard and expected for this input pattern.
+    display.addEventListener('input', () => {
+        const digits = display.value.replace(/\D/g, '').slice(0, 8);
+        if (digits.length > 4) display.value = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+        else if (digits.length > 2) display.value = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        else display.value = digits;
     });
 }
 
