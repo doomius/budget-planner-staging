@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 10:10';
+const BUILD_VERSION = '2026-08-25 12:46';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -10077,7 +10077,7 @@ function setupEventListeners() {
                 ? `Delete this joint transfer? It will show struck-through at $0.00 instead of disappearing — click "Revert to Original" any time to restore it.`
                 : `Are you sure you want to hide this dynamic transaction? This does not change your ${settingLabel}.`;
             if (confirm(confirmMsg)) {
-                saveDynamicTxOverride(id, { deleted: true });
+                if (!deleteVacationDynamicActualChargeIfApplicable(id)) saveDynamicTxOverride(id, { deleted: true });
                 saveDatabase();
                 document.getElementById('edit-tx-dialog')?.close();
                 renderApp();
@@ -10209,6 +10209,14 @@ function setupEventListeners() {
 
         // Synced payment cleanup logic
         if (removed) {
+            if (removed.vacationDynamicId) {
+                // removed.vacationDynamicId is the full computed dynId (e.g.
+                // 'dynamic-vacation-actual-<tripId>-<chargeId>'), not the charge's own raw id — must
+                // resolve it the same way findVacationActualChargeByDynId does elsewhere, not by
+                // comparing directly against trip.actualCharges[].id.
+                const found = findVacationActualChargeByDynId(removed.vacationDynamicId);
+                if (found) removeVacationActualCharge(found.trip, found.charge);
+            }
             if (removed.linkedPaymentId) {
                 // Remove checking side transaction
                 Object.values(state.personalCalendar || {}).forEach(list => {
@@ -10295,6 +10303,34 @@ function setupEventListeners() {
 
         // Handle dynamic transaction override save
         if (editMode === 'dynamic-override') {
+            // A 'dynamic-vacation-actual-*' id stands in for a real trip.actualCharges row (see
+            // findVacationActualChargeByDynId's own comment) — edit that row directly instead of
+            // writing an inert dynamicOverrides entry, which getVacationChargesForSource never even
+            // reads for this id shape (confirmed real gap: this used to silently no-op every save).
+            if (id.startsWith('dynamic-vacation-actual-')) {
+                const found = findVacationActualChargeByDynId(id);
+                if (found) {
+                    const { trip, charge } = found;
+                    const newAmt = parseFloat(document.getElementById('edit-tx-amount').value);
+                    const newDateVal = document.getElementById('edit-tx-date').value;
+                    const newDescRaw = document.getElementById('edit-tx-desc').value.trim();
+                    if (!newDateVal || !Number.isFinite(newAmt) || newAmt <= 0) { alert('Enter a valid date and amount.'); return; }
+                    charge.date = newDateVal;
+                    charge.amount = Math.abs(newAmt);
+                    // Displayed description is "<trip name>: <merchant/description>" — strip that
+                    // prefix back off so re-saving doesn't bake the trip name into the stored merchant.
+                    const prefix = `${trip.name}: `;
+                    charge.merchant = newDescRaw.startsWith(prefix) ? newDescRaw.slice(prefix.length) : newDescRaw;
+                    syncVacationActualEntryLink(trip, charge);
+                }
+                saveDatabase();
+                document.getElementById('edit-tx-dialog')?.close();
+                renderAppImmediate();
+                document.body.offsetHeight;
+                window.scrollTo(0, scrollPos);
+                logSuccess(`Updated vacation actual charge.`);
+                return;
+            }
             const newDesc = document.getElementById('edit-tx-desc').value.trim();
 
             // Anchor-of-a-split-group session (with or without any pieces yet — _splitEditorState is
@@ -10473,6 +10509,7 @@ function setupEventListeners() {
                 tx.owner = newOwner;
                 tx.trip = newTrip;
                 tx.amount = newAmtSigned;
+                mirrorCardTxEditToVacationActualCharge(tx);
                 if (tx.isAutomaticCardPayment) {
                     tx.automaticPaymentOverridden = true;
                     syncAutomaticCardPaymentOverride(tx, cardId);
@@ -10695,6 +10732,7 @@ function setupEventListeners() {
                     tx.amount = Math.abs(newAmt);
                     syncAutomaticCardPaymentOverride(tx, cardId);
                 }
+                mirrorCardTxEditToVacationActualCharge(tx);
                 // A user-edited estimated interest/plan-fee charge must survive
                 // postCardStatementChargesForMonth's next remove-and-regenerate pass unchanged, or
                 // the edit would be silently reverted on the very next render.
@@ -11436,6 +11474,41 @@ function relocateMobileSavingsListViewControls() {
     }
 }
 
+// Credit Cards/Loans ledger header, mobile only: identical restructuring to
+// relocateMobileDashboardListViewControls()/relocateMobileSavingsListViewControls() above, for
+// #cc-list-view-container's controls instead. Both +Transaction (#btn-open-cclist-add-modal) and
+// +Payment (#btn-add-loan-payment) move together — only one is ever visible at a time (Loans shows
+// +Payment, Credit Cards shows +Transaction, toggled elsewhere by renderCardDashboard()'s isLoan
+// check), so relocating both unconditionally is harmless and keeps this function agnostic to which
+// one is currently shown. #header-period-nav is the same shared anchor Dashboard/Savings use — on
+// the Credit Cards/Loans detail page it's repurposed to show the card's own year/month nav (see
+// updateHeaderPeriodNavAndToday()), relocated into .main-sticky-dashboard by
+// relocateMobileStickyHeader() same as every other tab. Must run AFTER relocateMobileCCDetailHeader()
+// in the render pass (it also changes .main-sticky-dashboard's height) and BEFORE the final
+// _updateListViewStickyOffset() call — see that call site's own comment for why order matters here.
+// Per explicit user request, 2026-08-25.
+function relocateMobileCCListViewControls() {
+    const periodNav = document.getElementById('header-period-nav');
+    const addBtn = document.getElementById('btn-open-cclist-add-modal');
+    const paymentBtn = document.getElementById('btn-add-loan-payment');
+    const clearBtn = document.getElementById('btn-reset-cclist-filters');
+    const searchRow = document.getElementById('cc-list-search-row');
+    const headerActions = document.getElementById('cc-list-header-actions');
+    if (!periodNav || !addBtn || !paymentBtn || !clearBtn || !searchRow || !headerActions) return;
+
+    const activeTab = document.body.dataset.activeTab;
+    const shouldRelocate = isMobileViewport() && (activeTab === 'creditcards' || activeTab === 'loans');
+    if (shouldRelocate) {
+        periodNav.insertAdjacentElement('afterend', addBtn);
+        addBtn.insertAdjacentElement('afterend', paymentBtn);
+        searchRow.appendChild(clearBtn);
+    } else {
+        headerActions.insertAdjacentElement('afterbegin', addBtn);
+        addBtn.insertAdjacentElement('afterend', paymentBtn);
+        headerActions.appendChild(clearBtn);
+    }
+}
+
 // Per explicit user request, 2026-08-04: on the mobile loan/card detail page, pin just the title
 // and date-nav at the top while scrolling, with the account dropdown, Payment/Statement, Month/Year
 // scope toggle, and stat-chip bubbles scrolling away normally below instead of also being pinned.
@@ -11899,6 +11972,7 @@ function renderAppImmediate() {
 
     updateHeaderPeriodNavAndToday(activeTab, isCC, isLoans);
     relocateMobileCCDetailHeader();
+    relocateMobileCCListViewControls();
     // Recompute here, not right after relocateMobileDashboardListViewControls()/
     // relocateMobileSavingsListViewControls() above (an earlier, incomplete version of this fix
     // did that) — relocateMobileCCDetailHeader() just above ALSO changes .main-sticky-dashboard's
@@ -16989,6 +17063,22 @@ function moveTransaction(txId, sourceDate, targetDate) {
     // transaction dragging" below, which only knows how to move a REAL stored row — a synthetic id
     // with nothing in personalCalendar/jointRegister/cardCalendars to find, so the drag/edit-dialog
     // date change no-opped with no error. Confirmed real, 2026-08-11.
+    // 1c-1. Dragging a real trip.actualCharges row (checking-sourced) — this id shape also matches
+    // the generic 'dynamic-vacation-' prefix below, so it must be checked first. Moves the real
+    // charge's date directly rather than writing a dynamicOverrides entry, which
+    // getVacationChargesForSource never reads for this id shape (see findVacationActualChargeByDynId).
+    if (txId && txId.startsWith('dynamic-vacation-actual-')) {
+        const found = findVacationActualChargeByDynId(txId);
+        if (found) {
+            found.charge.date = targetDate;
+            syncVacationActualEntryLink(found.trip, found.charge);
+            saveDatabase();
+            renderApp();
+            logSuccess(`Moved vacation actual charge to ${targetDate}`);
+            return;
+        }
+    }
+
     if (txId && txId.startsWith('dynamic-vacation-')) {
         saveDynamicTxOverride(txId, { date: targetDate });
         saveDatabase();
@@ -18338,7 +18428,7 @@ function renderPersonalList() {
             const settingLabel = String(id).startsWith('dynamic-paycheck-') ? 'payroll schedule' : 'bill splitter settings';
             if (!confirm(`Are you sure you want to hide "${desc}" on ${formatDateDisplay(date)}? This does not change your ${settingLabel}.`)) return;
 
-            saveDynamicTxOverride(id, { deleted: true });
+            if (!deleteVacationDynamicActualChargeIfApplicable(id)) saveDynamicTxOverride(id, { deleted: true });
             saveDatabase();
             renderApp();
             logSystem(`Hidden dynamic transaction ${id} on ${formatDateDisplay(date)}`);
@@ -18660,7 +18750,7 @@ function renderAsiaList() {
             const { id, date, desc } = e.currentTarget.dataset;
             if (!confirm(`Are you sure you want to hide "${desc}" on ${formatDateDisplay(date)}? This does not change your payroll schedule.`)) return;
 
-            saveDynamicTxOverride(id, { deleted: true });
+            if (!deleteVacationDynamicActualChargeIfApplicable(id)) saveDynamicTxOverride(id, { deleted: true });
             saveDatabase();
             renderApp();
             logSystem(`Hidden dynamic transaction ${id} on ${formatDateDisplay(date)}`);
@@ -19297,7 +19387,7 @@ function renderJointList() {
         const linkedMessage = getLinkedDynamicTxId(id) ? ' The matching personal transfer will also be hidden.' : '';
         if (!confirm(`Are you sure you want to hide "${desc}" on ${formatDateDisplay(date)}?${linkedMessage}`)) return;
 
-        saveDynamicTxOverride(id, { deleted: true });
+        if (!deleteVacationDynamicActualChargeIfApplicable(id)) saveDynamicTxOverride(id, { deleted: true });
         saveDatabase();
         renderApp();
         logSystem(`Hidden dynamic joint contribution ${id} on ${formatDateDisplay(date)}`);
@@ -19587,7 +19677,7 @@ function renderDayHighlights(day) {
                 if (isDynamic) {
                     const settingLabel = String(txId).startsWith('dynamic-paycheck-') ? 'payroll schedule' : 'bill splitter settings';
                     if (confirm(`Are you sure you want to hide "${dDesc}" on ${formatDateDisplay(dDate)}? This does not change your ${settingLabel}.`)) {
-                        saveDynamicTxOverride(txId, { deleted: true });
+                        if (!deleteVacationDynamicActualChargeIfApplicable(txId)) saveDynamicTxOverride(txId, { deleted: true });
                         saveDatabase();
                         renderApp();
                         logSystem(`Hidden dynamic transaction ${txId} on ${formatDateDisplay(dDate)}`);
@@ -21467,7 +21557,13 @@ function _updateListViewStickyOffset() {
     let ccHeaderHeight = 0;
     if (ccHeader) {
         ccHeader.style.top = `${dashboardHeight}px`;
-        ccHeaderHeight = ccHeader.getBoundingClientRect().height;
+        // Per explicit user request, 2026-08-25: on mobile Credit Cards/Loans this header is no
+        // longer sticky (relocateMobileCCListViewControls()/its matching index.css override — only
+        // "+ Transaction"/"+ Payment" stay pinned now, relocated into .main-sticky-dashboard itself).
+        // Same isSticky guard as Personal/Joint and Savings above/below — counting its full unstuck
+        // height here would offset the table's own sticky headers by a stale amount.
+        const ccHeaderIsSticky = getComputedStyle(ccHeader).position === 'sticky';
+        ccHeaderHeight = ccHeaderIsSticky ? ccHeader.getBoundingClientRect().height : 0;
     }
 
     const ccTableHeaders = document.querySelectorAll('#cc-list-view-table-container .data-table th');
@@ -23012,7 +23108,20 @@ document.addEventListener('click', (e) => {
         e.preventDefault();
         const container = btn.closest('.direction-toggle-group');
         const dir = btn.getAttribute('data-direction');
-        const hiddenId = container.id === 'trans-direction-group' ? 'trans-direction' : 'edit-trans-direction';
+        // container.id -> its own hidden input id. Falls back to 'edit-trans-direction' for the
+        // shared Edit Transaction dialog's toggle, which used to be the fallback for EVERY unlisted
+        // container id — including 'vacation-quick-direction-toggle' and (once added)
+        // 'vacation-actual-charge-direction-toggle', neither of which has anything to do with that
+        // dialog. That meant clicking Credit/Charge on the vacation "Log Actual Transaction" form
+        // silently overwrote whatever unrelated Edit Transaction dialog happened to be open instead
+        // of its own hidden field, so the vacation form's real direction never changed — confirmed
+        // real bug, 2026-08-25.
+        const hiddenIdMap = {
+            'trans-direction-group': 'trans-direction',
+            'vacation-quick-direction-toggle': 'vacation-quick-direction',
+            'vacation-actual-charge-direction-toggle': 'vacation-actual-charge-direction'
+        };
+        const hiddenId = hiddenIdMap[container.id] || 'edit-trans-direction';
         setDirectionToggleValue(container.id, hiddenId, dir);
         // The Credit Card/Loan edit form ALSO shows a separate "Transaction Type" dropdown
         // (#edit-tx-kind: Charge/Credit-Reversal/Payment) alongside this toggle — the save handler
@@ -24768,32 +24877,39 @@ function getVacationChargesForSourceInMonth(sourceKey, year, monthShort) {
 function syncVacationMasterCardCharges() {
     if (!state.cardCalendars) state.cardCalendars = {};
     const creditCardIds = state.loans.filter(l => l.type === 'credit').map(l => l.id);
-    const creditCardIdSet = new Set(creditCardIds);
 
     (state.vacationTrips || []).forEach(trip => {
-        const targetCardId = creditCardIdSet.has(trip.masterPaymentSource) ? trip.masterPaymentSource : null;
-        const linkPrefix = `dynamic-vacation-${trip.id}-`;
-        // Filtered to THIS trip only — getVacationChargesForSource() aggregates every trip sharing
-        // the same card, and an unfiltered id collision here would post another trip's charge under
-        // this trip's name/id.
-        const desired = targetCardId
-            ? getVacationChargesForSource(targetCardId).filter(c => c.id.startsWith(linkPrefix))
-            : [];
-        const desiredById = new Map(desired.map(c => [c.id, c]));
+        // Materialize per CARD, not just onto trip.masterPaymentSource — an individual actual charge
+        // can pick its own paymentSource independent of the trip's master source (see the
+        // #vacation-quick-source / #vacation-actual-charge-source selects), and
+        // getVacationChargesForSource() already resolves `ch.paymentSource || trip.masterPaymentSource`
+        // per charge for whatever sourceKey it's asked about. Querying it once per card and keeping
+        // only that card's own matches is what actually respects a charge's individual override —
+        // querying only the master card (the old design) silently dropped any charge whose own source
+        // was a different card entirely. Confirmed real gap, 2026-08-25. Budget-placeholder trips
+        // (useActualCharges false) are unaffected: getVacationChargesForSource()'s own placeholder
+        // branch only ever matches sourceKey === trip.masterPaymentSource, so every other card's query
+        // naturally comes back empty for those trips, same as before.
+        const desiredByCard = new Map(); // cardId -> Map(dynId -> charge)
+        creditCardIds.forEach(cardId => {
+            const list = getVacationChargesForSource(cardId).filter(c => c.vacationTripId === trip.id);
+            if (list.length) desiredByCard.set(cardId, new Map(list.map(c => [c.id, c])));
+        });
 
-        // Remove/reverse every stale entry for this trip on EVERY card, not just targetCardId — the
-        // source may have changed from card A to card B (or back to checking) since the last sync,
-        // and nothing else remembers which card a previous sync used (unlike prepaid bookings, which
-        // freeze `prepaidTxSource` for exactly this reason).
+        // Remove/reverse every stale entry for this trip on EVERY card — the source may have changed
+        // (to a different card, a checking account, or back to the trip's master) since the last sync,
+        // and nothing else remembers which card(s) a previous sync used (unlike prepaid bookings,
+        // which freeze `prepaidTxSource` for exactly this reason).
         creditCardIds.forEach(cardId => {
             const cal = state.cardCalendars[cardId];
             if (!cal) return;
+            const desiredById = desiredByCard.get(cardId) || new Map();
             Object.keys(cal).forEach(key => {
                 const list = cal[key];
                 for (let i = list.length - 1; i >= 0; i--) {
                     const tx = list[i];
-                    if (!tx.vacationDynamicId || !tx.vacationDynamicId.startsWith(linkPrefix)) continue;
-                    const current = cardId === targetCardId ? desiredById.get(tx.vacationDynamicId) : null;
+                    if (!tx.vacationDynamicId || tx.vacationTripId !== trip.id) continue;
+                    const current = desiredById.get(tx.vacationDynamicId);
                     if (current && tx.date === current.date && Math.abs((Number(tx.amount) || 0) + current.amount) < 0.005) {
                         desiredById.delete(tx.vacationDynamicId); // already correct as-is, nothing to repost
                         continue;
@@ -24808,28 +24924,30 @@ function syncVacationMasterCardCharges() {
             });
         });
 
-        if (!targetCardId || desiredById.size === 0) return;
-        const activeCard = state.loans.find(l => l.id === targetCardId);
-        const owner = activeCard && activeCard.paymentSource === 'joint' ? 'joint' : activeCard && activeCard.paymentSource === 'asia' ? 'asia' : 'jason';
-        desiredById.forEach(charge => {
-            const dateObj = new Date(charge.date + 'T00:00:00');
-            const y = dateObj.getFullYear();
-            const mShort = MONTH_ORDER[dateObj.getMonth()];
-            const key = `${y}-${mShort}`;
-            ensureYearMonthInitialized(y, mShort);
-            if (!state.cardCalendars[targetCardId]) state.cardCalendars[targetCardId] = {};
-            if (!state.cardCalendars[targetCardId][key]) state.cardCalendars[targetCardId][key] = [];
-            state.cardCalendars[targetCardId][key].push({
-                id: 'c-' + Math.random().toString(36).substr(2, 9),
-                date: charge.date, merchant: trip.name, description: charge.description, trip: trip.name,
-                amount: -charge.amount, transactionKind: 'charge', owner,
-                interestRate: activeCard ? (activeCard.interestRate || 0) : 0,
-                isRecurring: false, recurringDay: 0, recurringSeriesId: '',
-                vacationDynamicId: charge.id, vacationTripId: trip.id
+        desiredByCard.forEach((desiredById, cardId) => {
+            if (desiredById.size === 0) return;
+            const activeCard = state.loans.find(l => l.id === cardId);
+            const owner = activeCard && activeCard.paymentSource === 'joint' ? 'joint' : activeCard && activeCard.paymentSource === 'asia' ? 'asia' : 'jason';
+            desiredById.forEach(charge => {
+                const dateObj = new Date(charge.date + 'T00:00:00');
+                const y = dateObj.getFullYear();
+                const mShort = MONTH_ORDER[dateObj.getMonth()];
+                const key = `${y}-${mShort}`;
+                ensureYearMonthInitialized(y, mShort);
+                if (!state.cardCalendars[cardId]) state.cardCalendars[cardId] = {};
+                if (!state.cardCalendars[cardId][key]) state.cardCalendars[cardId][key] = [];
+                state.cardCalendars[cardId][key].push({
+                    id: 'c-' + Math.random().toString(36).substr(2, 9),
+                    date: charge.date, merchant: trip.name, description: charge.description, trip: trip.name,
+                    amount: -charge.amount, transactionKind: 'charge', owner,
+                    interestRate: activeCard ? (activeCard.interestRate || 0) : 0,
+                    isRecurring: false, recurringDay: 0, recurringSeriesId: '',
+                    vacationDynamicId: charge.id, vacationTripId: trip.id
+                });
+                adjustCardCurrentBalance(cardId, -charge.amount);
             });
-            adjustCardCurrentBalance(targetCardId, -charge.amount);
+            refreshMaterializedCardStatementCharges(cardId);
         });
-        refreshMaterializedCardStatementCharges(targetCardId);
     });
 }
 
@@ -24837,6 +24955,88 @@ function getVacationChargesByDateForSourceInMonth(sourceKey, year, monthShort) {
     const map = {};
     getVacationChargesForSourceInMonth(sourceKey, year, monthShort).forEach(c => { (map[c.date] = map[c.date] || []).push(c); });
     return map;
+}
+
+// --- trip.actualCharges[] single-source-of-truth helpers -------------------------------------
+// trip.actualCharges is what actually feeds the checking ledger (getVacationChargesForSource, via
+// its 'dynamic-vacation-actual-<tripId>-<chargeId>' placeholder ids) and the card ledger
+// (syncVacationMasterCardCharges, via real materialized transactions tagged vacationDynamicId).
+// category.actualEntries is a SEPARATE, parallel array (only used for the Expenses view's own
+// non-prepaid spend tally) linked to a charge purely by sharing the same id at creation time — kept
+// in sync here on every edit/delete so the two never silently drift apart.
+function findVacationActualCharge(chargeId) {
+    for (const trip of (state.vacationTrips || [])) {
+        const charge = (trip.actualCharges || []).find(ch => ch.id === chargeId);
+        if (charge) return { trip, charge };
+    }
+    return null;
+}
+
+// Recomputes each candidate's dynId forward (rather than parsing the id string) since both trip.id
+// and charge.id can themselves contain hyphens, making the concatenated id ambiguous to split.
+function findVacationActualChargeByDynId(dynId) {
+    for (const trip of (state.vacationTrips || [])) {
+        for (const charge of (trip.actualCharges || [])) {
+            if (`dynamic-vacation-actual-${trip.id}-${charge.id}` === dynId) return { trip, charge };
+        }
+    }
+    return null;
+}
+
+function syncVacationActualEntryLink(trip, charge) {
+    (trip.categories || []).forEach(cat => {
+        const entry = (cat.actualEntries || []).find(en => en.id === charge.id);
+        if (entry) {
+            entry.amount = charge.direction === 'credit' ? -Math.abs(charge.amount) : Math.abs(charge.amount);
+            entry.date = charge.date;
+            entry.note = charge.merchant || charge.description || 'Actual Charge';
+        }
+    });
+}
+
+function removeVacationActualCharge(trip, charge) {
+    trip.actualCharges = (trip.actualCharges || []).filter(ch => ch.id !== charge.id);
+    (trip.categories || []).forEach(cat => {
+        if (cat.actualEntries) cat.actualEntries = cat.actualEntries.filter(en => en.id !== charge.id);
+    });
+}
+
+// Used at every "hide this dynamic transaction" site on the checking ledger — a
+// 'dynamic-vacation-actual-*' id is never a real bill/paycheck placeholder that needs a
+// non-destructive dynamicOverrides entry, it's a stand-in for a real trip.actualCharges row, so
+// hiding it should really delete that row (mirroring a real ledger delete). Returns true if it
+// handled (or attempted to handle) the id, so the caller knows to skip its normal
+// saveDynamicTxOverride(id, {deleted:true}) fallback.
+function deleteVacationDynamicActualChargeIfApplicable(id) {
+    if (!String(id).startsWith('dynamic-vacation-actual-')) return false;
+    const found = findVacationActualChargeByDynId(id);
+    if (found) removeVacationActualCharge(found.trip, found.charge);
+    return true;
+}
+
+// Card-side counterpart of the checking-side special-casing above: a card transaction tagged
+// vacationDynamicId/vacationTripId (materialized by syncVacationMasterCardCharges) IS a real
+// transaction that the card ledger's own edit form already saves directly — this just also mirrors
+// date/amount/merchant/description back onto the trip.actualCharges row it came from, so the next
+// vacation-tab render's reconciliation sees "already correct" (it compares date + amount only, see
+// syncVacationMasterCardCharges's own comment) instead of quietly reverting the edit.
+function mirrorCardTxEditToVacationActualCharge(tx) {
+    if (!tx.vacationDynamicId) return;
+    // tx.vacationDynamicId is the full computed dynId (e.g.
+    // 'dynamic-vacation-actual-<tripId>-<chargeId>'), not the charge's own raw id — same resolution
+    // findVacationActualChargeByDynId already does elsewhere.
+    const found = findVacationActualChargeByDynId(tx.vacationDynamicId);
+    if (!found) return;
+    const { trip, charge } = found;
+    charge.date = tx.date;
+    // Card tx sign convention: negative = charge/debit, positive = payment/credit — the inverse of
+    // trip.actualCharges' own always-positive amount + direction field (see
+    // getVacationChargesForSource's useActualCharges branch).
+    charge.amount = Math.abs(tx.amount);
+    charge.direction = tx.amount < 0 ? 'charge' : 'credit';
+    if (tx.merchant) charge.merchant = tx.merchant;
+    if (tx.description) charge.description = tx.description;
+    syncVacationActualEntryLink(trip, charge);
 }
 
 function getVacationTripDateRangeText(trip) {
@@ -26298,7 +26498,7 @@ function buildVacationSpilloverContinuationEvents(trip, dateStr, prevItin, prevD
         pushIfSpills(ad.startTime || ad.time, ad.endTime, shipTz, 'vacation-week-event-excursion', '🍹', ad.name || 'Add-On', 'addon', ad.id);
     });
     prevItin.actualCharges.forEach(ch => {
-        pushIfSpills(ch.startTime, ch.endTime, shipTz, 'vacation-week-event-expense', '💵', ch.merchant || ch.description || 'Charge', 'actual', ch.id);
+        pushIfSpills(ch.startTime, ch.endTime, shipTz, 'vacation-week-event-expense', '💵', ch.merchant || ch.description || 'Charge', 'actual-charge', ch.id);
     });
     if (prevItin.cruiseDay && prevItin.cruiseDay.dayType !== 'seaDay') {
         const d = prevItin.cruiseDay;
@@ -26348,7 +26548,7 @@ function renderVacationWeekGrid(trip) {
             chips.push(`<div class="vacation-week-allday-chip vacation-week-event-excursion" data-event-type="addon" data-event-id="${ad.id}" data-date="${dateStr}">🍹 ${escapeHTML(ad.name || 'Add-On')} — ${costLabel}</div>`);
         });
         itin.actualCharges.filter(ch => !ch.startTime).forEach(ch => {
-            chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense" data-event-type="actual" data-event-id="${ch.id}" data-date="${dateStr}">💵 ${escapeHTML(ch.merchant || ch.description || 'Actual Charge')} — ${formatVacationMoney(ch.amount)} (${ch.direction === 'credit' ? 'Credit' : 'Charge'})</div>`);
+            chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense" data-event-type="actual-charge" data-event-id="${ch.id}" data-date="${dateStr}">💵 ${escapeHTML(ch.merchant || ch.description || 'Actual Charge')} — ${formatVacationMoney(ch.amount)} (${ch.direction === 'credit' ? 'Credit' : 'Charge'})</div>`);
         });
         itin.charges.forEach(cat => chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense">💵 ${escapeHTML(cat.label)} — ${formatVacationMoney(getVacationCategoryDisplayAmount(cat, trip))}${cat.prepaid ? (cat.prepaidTxId ? ' (Booked)' : ' (Planned)') : ''}</div>`));
         if (itin.consolidatedCharge) {
@@ -26525,7 +26725,7 @@ function renderVacationWeekGrid(trip) {
                 top: (startMin / 60) * H, height: Math.max((durationMin / 60) * H, 28), cls: 'vacation-week-event-expense',
                 label: `💵 ${chTimeLabel} — ${ch.merchant || ch.description || 'Charge'} (${formatVacationMoney(ch.amount)})`,
                 tooltip: formatVacationRawTimeTooltip(baseDateStr, ch.startTime, ch.endTime, shipTz),
-                type: 'actual', id: ch.id, date: conv.dateStr || baseDateStr, startMin, endMin: startMin + durationMin
+                type: 'actual-charge', id: ch.id, date: conv.dateStr || baseDateStr, startMin, endMin: startMin + durationMin
             });
         });
         if (itin.cruiseDay && itin.cruiseDay.dayType !== 'seaDay') {
@@ -26651,7 +26851,7 @@ function renderVacationDayGrid(trip) {
         chips.push(`<div class="vacation-week-allday-chip vacation-week-event-excursion" data-event-type="addon" data-event-id="${ad.id}" data-date="${dayDateStr}">🍹 ${escapeHTML(ad.name || 'Add-On')} — ${costLabel}</div>`);
     });
     itin.actualCharges.filter(ch => !ch.startTime).forEach(ch => {
-        chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense" data-event-type="actual" data-event-id="${ch.id}" data-date="${dayDateStr}">💵 ${escapeHTML(ch.merchant || ch.description || 'Actual Charge')} — ${formatVacationMoney(ch.amount)} (${ch.direction === 'credit' ? 'Credit' : 'Charge'})</div>`);
+        chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense" data-event-type="actual-charge" data-event-id="${ch.id}" data-date="${dayDateStr}">💵 ${escapeHTML(ch.merchant || ch.description || 'Actual Charge')} — ${formatVacationMoney(ch.amount)} (${ch.direction === 'credit' ? 'Credit' : 'Charge'})</div>`);
     });
     itin.charges.forEach(cat => chips.push(`<div class="vacation-week-allday-chip vacation-week-event-expense">💵 ${escapeHTML(cat.label)} — ${formatVacationMoney(getVacationCategoryDisplayAmount(cat, trip))}${cat.prepaid ? (cat.prepaidTxId ? ' (Booked)' : ' (Planned)') : ''}</div>`));
     if (itin.consolidatedCharge) {
@@ -26837,7 +27037,7 @@ function renderVacationDayGrid(trip) {
             top: (startMin / 60) * H, height: Math.max((durationMin / 60) * H, 28), cls: 'vacation-week-event-expense',
             label: `💵 ${chTimeLabel} — ${ch.merchant || ch.description || 'Charge'} (${formatVacationMoney(ch.amount)})`,
             tooltip: formatVacationRawTimeTooltip(baseDateStr, ch.startTime, ch.endTime, shipTz),
-            type: 'actual', id: ch.id, date: conv.dateStr || baseDateStr, startMin, endMin: startMin + durationMin
+            type: 'actual-charge', id: ch.id, date: conv.dateStr || baseDateStr, startMin, endMin: startMin + durationMin
         });
     });
     if (itin.cruiseDay && itin.cruiseDay.dayType !== 'seaDay') {
@@ -27077,7 +27277,7 @@ function setupVacationCalendarDragAndResize() {
                     item.endTime = newEndHHMM;
                     if (targetDate) item.date = targetDate;
                 }
-            } else if (eventType === 'actual') {
+            } else if (eventType === 'actual-charge') {
                 const item = trip.actualCharges?.find(ch => ch.id === eventId);
                 if (item) {
                     item.startTime = newStartHHMM;
@@ -27326,16 +27526,6 @@ function setupVacationEventListeners() {
         renderVacationTab();
     });
 
-    let vacationQuickAddDirection = 'charge';
-    const setVacationQuickAddDirection = (dir) => {
-        vacationQuickAddDirection = dir;
-        const btnCharge = document.getElementById('btn-vacation-quick-charge');
-        const btnCredit = document.getElementById('btn-vacation-quick-credit');
-        if (btnCharge) btnCharge.classList.toggle('active', dir === 'charge');
-        if (btnCredit) btnCredit.classList.toggle('active', dir === 'credit');
-    };
-    document.getElementById('btn-vacation-quick-charge')?.addEventListener('click', () => setVacationQuickAddDirection('charge'));
-    document.getElementById('btn-vacation-quick-credit')?.addEventListener('click', () => setVacationQuickAddDirection('credit'));
 
     document.getElementById('vacation-day-quick-add-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -27353,6 +27543,13 @@ function setupVacationEventListeners() {
         const endTime = document.getElementById('vacation-quick-end-time')?.value || '';
         const expenseCategoryKey = document.getElementById('vacation-quick-category')?.value || '';
         const paymentSource = document.getElementById('vacation-quick-source')?.value || trip.masterPaymentSource;
+        // Read directly from the hidden input the shared .direction-toggle-group click handler
+        // writes to (see its hiddenIdMap) rather than a module-level variable — the variable this
+        // used to read (vacationQuickAddDirection) was only ever changed by two button ids
+        // (btn-vacation-quick-charge/-credit) that don't exist in the DOM, so clicking Credit here
+        // had no effect and every logged charge silently saved as a Charge. Confirmed real bug,
+        // 2026-08-25.
+        const direction = document.getElementById('vacation-quick-direction')?.value === 'credit' ? 'credit' : 'charge';
 
         const actualCharge = {
             id: genVacationId('actual'),
@@ -27363,7 +27560,7 @@ function setupVacationEventListeners() {
             description,
             expenseCategoryKey,
             amount,
-            direction: vacationQuickAddDirection,
+            direction,
             paymentSource
         };
 
@@ -27376,7 +27573,7 @@ function setupVacationEventListeners() {
                 if (!cat.actualEntries) cat.actualEntries = [];
                 cat.actualEntries.push({
                     id: actualCharge.id,
-                    amount: vacationQuickAddDirection === 'credit' ? -amount : amount,
+                    amount: direction === 'credit' ? -amount : amount,
                     date,
                     note: merchant || description || 'Actual Charge'
                 });
@@ -27392,6 +27589,7 @@ function setupVacationEventListeners() {
         document.getElementById('vacation-quick-amount').value = '';
         document.getElementById('vacation-quick-start-time').value = '';
         document.getElementById('vacation-quick-end-time').value = '';
+        setDirectionToggleValue('vacation-quick-direction-toggle', 'vacation-quick-direction', 'charge');
     });
 
     // ---- Pre & Post Cruise Activities ----
@@ -28150,6 +28348,86 @@ function setupVacationEventListeners() {
         saveDatabase();
         actualEntryDialog.close();
         renderVacationTab();
+    });
+
+    // ---- Actual charges (trip.actualCharges — the itemized rows that mirror into the checking/
+    // card ledgers). Opened by double-clicking the charge's chip/block on the Day or Week grid; see
+    // openVacationEventEditModal()'s 'actual-charge' branch. Distinct from the actualEntryDialog
+    // above, which only edits a category's own spend tally and never touches the ledger. ----
+    const actualChargeDialog = document.getElementById('vacation-actual-charge-dialog');
+    window.openVacationActualChargeDialog = function(trip, charge) {
+        document.getElementById('vacation-actual-charge-id').value = charge.id;
+        document.getElementById('vacation-actual-charge-date').value = charge.date || '';
+        document.getElementById('vacation-actual-charge-start-time').value = charge.startTime || '';
+        document.getElementById('vacation-actual-charge-end-time').value = charge.endTime || '';
+        document.getElementById('vacation-actual-charge-merchant').value = charge.merchant || '';
+        document.getElementById('vacation-actual-charge-description').value = charge.description || '';
+        document.getElementById('vacation-actual-charge-amount').value = charge.amount || '';
+
+        const catEl = document.getElementById('vacation-actual-charge-category');
+        if (catEl) {
+            catEl.innerHTML = '<option value="">(Select Expense Category)</option>' +
+                (trip.categories || []).map(c => `<option value="${escapeHTML(c.key)}">${escapeHTML(c.label)}</option>`).join('');
+            catEl.value = charge.expenseCategoryKey || '';
+        }
+        const sourceEl = document.getElementById('vacation-actual-charge-source');
+        if (sourceEl) {
+            const masterSourceLabel = trip.masterPaymentSource === 'joint' ? 'Joint Checking' : trip.masterPaymentSource === 'asia' ? "Asia's Checking" : trip.masterPaymentSource === 'jason' ? "Jason's Checking" : (state.loans.find(l => l.id === trip.masterPaymentSource)?.name || "Jason's Checking");
+            let optionsHtml = `<option value="">Master Payment Source (${escapeHTML(masterSourceLabel)})</option>`;
+            optionsHtml += `<optgroup label="Checking Accounts">`;
+            optionsHtml += `<option value="jason">Jason's Checking</option>`;
+            optionsHtml += `<option value="joint">Joint Checking</option>`;
+            optionsHtml += `<option value="asia">Asia's Checking</option>`;
+            optionsHtml += `</optgroup>`;
+            const cards = state.loans.filter(l => l.type === 'credit');
+            if (cards.length) {
+                optionsHtml += `<optgroup label="Credit Cards">`;
+                cards.forEach(c => { optionsHtml += `<option value="${c.id}">${escapeHTML(c.name)}</option>`; });
+                optionsHtml += `</optgroup>`;
+            }
+            sourceEl.innerHTML = optionsHtml;
+            sourceEl.value = charge.paymentSource || '';
+        }
+        setDirectionToggleValue('vacation-actual-charge-direction-toggle', 'vacation-actual-charge-direction', charge.direction === 'credit' ? 'credit' : 'charge');
+        actualChargeDialog.showModal();
+    };
+    document.getElementById('btn-cancel-vacation-actual-charge')?.addEventListener('click', () => actualChargeDialog.close());
+    document.getElementById('btn-delete-vacation-actual-charge')?.addEventListener('click', () => {
+        const chargeId = document.getElementById('vacation-actual-charge-id').value;
+        const found = findVacationActualCharge(chargeId);
+        if (!found) { actualChargeDialog.close(); return; }
+        if (!confirm(`Delete this actual charge (${found.charge.merchant || found.charge.description || 'Charge'})? If it's posted to a checking or credit card ledger, it will be removed from there too.`)) return;
+        removeVacationActualCharge(found.trip, found.charge);
+        saveDatabase();
+        actualChargeDialog.close();
+        renderVacationTab();
+        logSystem(`Deleted vacation actual charge: ${found.charge.merchant || found.charge.description || 'Charge'}`);
+    });
+    document.getElementById('vacation-actual-charge-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const chargeId = document.getElementById('vacation-actual-charge-id').value;
+        const found = findVacationActualCharge(chargeId);
+        if (!found) { actualChargeDialog.close(); return; }
+        const { trip, charge } = found;
+        const date = document.getElementById('vacation-actual-charge-date').value;
+        const amount = parseFloat(document.getElementById('vacation-actual-charge-amount').value);
+        if (!date || !Number.isFinite(amount) || amount <= 0) { alert('Date and a valid positive amount are required.'); return; }
+
+        charge.date = date;
+        charge.startTime = document.getElementById('vacation-actual-charge-start-time').value || '';
+        charge.endTime = document.getElementById('vacation-actual-charge-end-time').value || '';
+        charge.merchant = document.getElementById('vacation-actual-charge-merchant').value.trim();
+        charge.description = document.getElementById('vacation-actual-charge-description').value.trim();
+        charge.expenseCategoryKey = document.getElementById('vacation-actual-charge-category').value || '';
+        charge.amount = amount;
+        charge.direction = document.getElementById('vacation-actual-charge-direction')?.value === 'credit' ? 'credit' : 'charge';
+        charge.paymentSource = document.getElementById('vacation-actual-charge-source').value || trip.masterPaymentSource;
+        syncVacationActualEntryLink(trip, charge);
+
+        saveDatabase();
+        actualChargeDialog.close();
+        renderVacationTab();
+        logSuccess(`Updated actual charge: ${charge.merchant || charge.description || 'Charge'} (${formatVacationMoney(charge.amount)}).`);
     });
 
     // ---- Flights ----
@@ -29106,6 +29384,9 @@ function setupVacationEventListeners() {
         } else if (type === 'lodging' || type === 'lodging-checkin' || type === 'lodging-checkout') {
             const item = (trip.lodging || []).find(l => l.id === id);
             if (item) openLodgingDialog(item);
+        } else if (type === 'actual-charge') {
+            const charge = (trip.actualCharges || []).find(ch => ch.id === id);
+            if (charge && typeof window.openVacationActualChargeDialog === 'function') window.openVacationActualChargeDialog(trip, charge);
         } else if (type === 'actual') {
             let foundCat = null;
             let foundEntry = null;
@@ -29117,8 +29398,18 @@ function setupVacationEventListeners() {
         }
     };
 
-    document.getElementById('vacation-planner-tab')?.addEventListener('dblclick', (e) => {
-        const eventEl = e.target.closest('.vacation-week-event, .vacation-day-event, .vacation-week-allday-chip');
+    // 'vacation-planner-tab' never existed in the DOM (the real outer container is 'view-vacation') —
+    // this listener has been completely dead since it was written, meaning NO all-day chip (lodging
+    // check-in/out, untimed excursion/add-on/pre-post activity, untimed actual charge, etc.) has ever
+    // responded to double-click, on either Day or Week view. Confirmed real, 2026-08-25, found while
+    // verifying the new actual-charge edit dialog against a charge with no start time. Scoped to only
+    // '.vacation-week-allday-chip' (not '.vacation-week-event'/'.vacation-day-event') because TIMED
+    // events already have a working dblclick handler on their own hourgrid container (see
+    // setupVacationCalendarDragAndResize()) — matching those here too would double-fire
+    // openVacationEventEditModal on every timed-event double-click and throw on the dialog's second
+    // showModal() call.
+    document.getElementById('view-vacation')?.addEventListener('dblclick', (e) => {
+        const eventEl = e.target.closest('.vacation-week-allday-chip');
         if (!eventEl || eventEl.classList.contains('vacation-event-seaday-allday')) return;
         const type = eventEl.dataset.eventType;
         const id = eventEl.dataset.eventId;
@@ -34272,6 +34563,7 @@ function renderCardDashboard(cardId) {
     updateGlobalTogglesPlacement();
     updateHeaderPeriodNavAndToday(isLoan ? 'loans' : 'creditcards', !isLoan, isLoan);
     relocateMobileCCDetailHeader();
+    relocateMobileCCListViewControls();
 
     // Keep one planner instance shared by calendar and ledger views, directly below the metrics.
     const payoffHost = document.getElementById('cc-payoff-planner-host');
