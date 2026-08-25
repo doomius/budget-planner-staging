@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 13:16';
+const BUILD_VERSION = '2026-08-25 13:50';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -4812,7 +4812,14 @@ function enhanceDateInput(input) {
     // user closes the picker without actually changing anything, the seeded value is reverted back to
     // empty rather than silently committing a date they never chose.
     const anchorFromId = input.dataset.anchorFrom;
-    pickerBtn.addEventListener('mousedown', (e) => {
+    // 'click', not 'mousedown' — confirmed real bug, 2026-08-25, app-wide on mobile (every date field
+    // uses this same enhancer): mousedown fires on touch-DOWN, before the tap gesture actually
+    // completes, and iOS Safari's user-activation gating for showPicker() is timing-sensitive enough
+    // that a picker request made that early is often silently dropped (the try/catch above swallows
+    // it, so nothing visibly happens — no error, no picker). 'click' fires after touch-up, once the
+    // tap is a fully committed, trusted user gesture, which is what showPicker() actually needs.
+    // Desktop mouse clicks fire both events close enough together that this has no effect there.
+    pickerBtn.addEventListener('click', (e) => {
         e.preventDefault();
         const anchorInput = anchorFromId ? document.getElementById(anchorFromId) : null;
         if (!input.value && anchorInput && anchorInput.value) {
@@ -21708,6 +21715,11 @@ function _updateVacationStickyOffsets() {
     capToViewport(document.getElementById('vacation-week-hourgrid-scroll'), 32);
 
     let dayOffset = primaryHeight;
+    // "+ Add Transaction" (mobile only — see relocateMobileVacationDayAddTransactionButton()) takes
+    // the first sticky slot below the trip header, ahead of the date-nav row below. Zero height when
+    // not actually sticky (hidden entirely on desktop via .vacation-day-add-transaction-btn's base
+    // rule), so this is a harmless no-op there.
+    dayOffset = stackNext(document.getElementById('btn-vacation-day-add-transaction'), dayOffset);
     dayOffset = stackNext(document.querySelector('#vacation-day-layout .table-card-header'), dayOffset);
     stackNext(document.querySelector('.vacation-day-quick-add-header'), dayOffset);
     capToViewport(document.querySelector('.vacation-day-quick-add-scroll'), 32);
@@ -25889,7 +25901,33 @@ function renderVacationTab() {
     // something else happens to trigger a recompute. Confirmed real regression, 2026-08-14 ("can't
     // even scroll the quick transactions").
     relocateMobileVacationStickyHeader();
+    relocateMobileVacationDayAddTransactionButton();
     _updateVacationStickyOffsets();
+}
+
+// Day view's "+ Add Transaction" button, mobile only: per explicit user request, 2026-08-25, sticky
+// directly below #vacation-sticky-header-container (the trip hero card) — ahead of the date-nav row
+// (#vacation-day-layout .table-card-header), which used to occupy that slot alone. position:sticky
+// can't visually reorder siblings, only freeze whichever slot an element already occupies in normal
+// flow, so this physically moves the button to be #vacation-day-layout's own first child (ahead of
+// .table-card-header) rather than leaving it inside .vacation-day-view-container, where it sits
+// after that row. Restored to its original spot (first child of .vacation-day-view-container) off
+// mobile. Not gated to Day view specifically — #vacation-day-layout stays harmlessly hidden via its
+// own .hidden class the rest of the time, and this recomputing unconditionally means the button is
+// already correctly placed the moment Day view becomes visible, matching every other
+// relocateMobileXxx() function's idempotent/state-free convention in this file.
+function relocateMobileVacationDayAddTransactionButton() {
+    const dayLayout = document.getElementById('vacation-day-layout');
+    const addBtn = document.getElementById('btn-vacation-day-add-transaction');
+    const dayViewContainer = document.querySelector('.vacation-day-view-container');
+    if (!dayLayout || !addBtn || !dayViewContainer) return;
+
+    const shouldRelocate = isMobileViewport() && document.body.dataset.activeTab === 'vacation';
+    if (shouldRelocate) {
+        dayLayout.prepend(addBtn);
+    } else {
+        dayViewContainer.prepend(addBtn);
+    }
 }
 
 // Vacation Planner, mobile only: per explicit user request, 2026-08-25, only the trip icon+name row
@@ -26802,9 +26840,6 @@ function renderVacationDayGrid(trip) {
     const dayTitleEl = document.getElementById('vacation-day-title');
     if (dayTitleEl) dayTitleEl.textContent = formattedTitle;
 
-    const datePickerEl = document.getElementById('vacation-day-date-picker');
-    if (datePickerEl) datePickerEl.value = dayDateStr;
-
     const quickDateEl = document.getElementById('vacation-quick-date');
     if (quickDateEl) quickDateEl.value = dayDateStr;
 
@@ -27353,7 +27388,12 @@ function setupVacationEventListeners() {
     // land on an empty, unrelated week for the newly-selected one.
     const jumpWeekToTripStart = (tripId) => {
         const trip = (state.vacationTrips || []).find(t => t.id === tripId);
-        if (trip) state.vacationWeekStartDate = trip.startDate;
+        if (!trip) return;
+        state.vacationWeekStartDate = trip.startDate;
+        // Same reasoning for Day view — per explicit user request, 2026-08-25 — staying on whatever
+        // day-of-month the PREVIOUS trip had showing would almost always be outside the newly-selected
+        // trip's own date range.
+        state.vacationDayDate = trip.startDate;
     };
     tripSelect?.addEventListener('change', (e) => {
         state.vacationSelectedTripId = e.target.value;
@@ -27391,6 +27431,15 @@ function setupVacationEventListeners() {
             if (state.vacationViewMode === 'week' && !state.vacationWeekStartDate) {
                 const trip = getSelectedVacationTrip();
                 if (trip) state.vacationWeekStartDate = trip.startDate;
+            } else if (state.vacationViewMode === 'day') {
+                // Always jumps to the trip's first day on entry — per explicit user request,
+                // 2026-08-25, unlike Week view above (which only sets an initial anchor once and
+                // otherwise remembers wherever you last scrolled). Day view now has no manual date
+                // field to jump elsewhere with (removed the same request — see the date-picker/Save
+                // Changes removal below), so First/Prev/Next/Last Day are the only ways to move off
+                // this default.
+                const trip = getSelectedVacationTrip();
+                if (trip) state.vacationDayDate = trip.startDate;
             }
             saveDatabase();
             renderVacationTab();
@@ -27511,22 +27560,6 @@ function setupVacationEventListeners() {
         saveDatabase();
         renderVacationTab();
     });
-    document.getElementById('btn-vacation-day-save-date')?.addEventListener('click', () => {
-        const picker = document.getElementById('vacation-day-date-picker');
-        if (picker && picker.value) {
-            state.vacationDayDate = picker.value;
-            saveDatabase();
-            renderVacationTab();
-            logSuccess(`Saved Day View date (${formatDateDisplay(picker.value)}).`);
-        }
-    });
-    document.getElementById('vacation-day-date-picker')?.addEventListener('change', (e) => {
-        state.vacationDayDate = e.target.value;
-        saveDatabase();
-        renderVacationTab();
-    });
-
-
     document.getElementById('vacation-day-quick-add-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const trip = getSelectedVacationTrip();
