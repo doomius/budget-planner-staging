@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 12:46';
+const BUILD_VERSION = '2026-08-25 13:16';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -34562,6 +34562,17 @@ function renderCardDashboard(cardId) {
     // applyCreditCardSectionState().
     updateGlobalTogglesPlacement();
     updateHeaderPeriodNavAndToday(isLoan ? 'loans' : 'creditcards', !isLoan, isLoan);
+    // relocateMobileStickyHeader() is what actually builds .main-sticky-dashboard's sticky content
+    // (moves #header-period-nav/#unified-header-layout into it) for every MOBILE_STICKY_HEADER_TABS
+    // tab, including creditcards/loans — but it's normally only called once, near the top of the full
+    // renderApp() pass. This function is very often reached WITHOUT going through that pass at all
+    // (a card-tile click on the overview grid calls this directly — see the comment above), so without
+    // calling it here too, .main-sticky-dashboard stayed empty/non-sticky and the whole account header
+    // rendered in plain normal flow until some unrelated action forced a full render. That's also why
+    // the exact same account page looked different depending on how it was reached (sidebar nav vs. a
+    // card tile click) — confirmed real bug, 2026-08-25. Idempotent, safe to call again even when this
+    // WAS reached through the full pass (see the function's own comment).
+    relocateMobileStickyHeader();
     relocateMobileCCDetailHeader();
     relocateMobileCCListViewControls();
 
