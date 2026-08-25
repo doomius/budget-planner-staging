@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 09:18';
+const BUILD_VERSION = '2026-08-25 10:10';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -11899,6 +11899,19 @@ function renderAppImmediate() {
 
     updateHeaderPeriodNavAndToday(activeTab, isCC, isLoans);
     relocateMobileCCDetailHeader();
+    // Recompute here, not right after relocateMobileDashboardListViewControls()/
+    // relocateMobileSavingsListViewControls() above (an earlier, incomplete version of this fix
+    // did that) — relocateMobileCCDetailHeader() just above ALSO changes .main-sticky-dashboard's
+    // own height on every tab, not just Credit Cards/Loans (its "not the CC detail page" branch
+    // unconditionally re-homes #app-header back into .main-sticky-dashboard as its default
+    // parent), so anywhere earlier in this render pass still captures a too-small height. The
+    // ResizeObserver that would otherwise catch this fires asynchronously (next frame), leaving a
+    // real window — confirmed via an annotated screenshot, 2026-08-25 (Yearly Savings Summary's
+    // header sticking mid-list at the smaller, stale height instead of right below
+    // "+ Transaction") — where every sticky table header driven by _updateListViewStickyOffset()
+    // uses a stale offset until the user scrolls or something else triggers a recompute. This is
+    // now the true last point in the render pass that touches .main-sticky-dashboard's size.
+    _updateListViewStickyOffset();
 
     // Jump-to-Below-Threshold only makes sense on the Personal/Joint dashboard, where the dynamic
     // 1st/15th joint transfer chips/rows can carry the belowThreshold flag — Calendar and List view
