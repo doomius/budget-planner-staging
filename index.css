@@ -711,6 +711,18 @@ body[data-active-tab="loans"] .main-sticky-dashboard {
     display: grid;
     grid-template-columns: 56px repeat(7, minmax(90px, 1fr));
 }
+/* Mobile shows 3 days instead of 7 (see getVacationThreeDayDates()/renderVacationWeekGrid() in
+   app.js) — 3 columns fit naturally within a phone's own width, so the 700px min-width forcing the
+   page to widen for 7 columns (and the horizontal scroll that came with it) is dropped entirely
+   here. Per explicit user request, 2026-08-25. */
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-week-grid {
+        min-width: 0;
+    }
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-week-header-row,
+    body.is-mobile-screen[data-active-tab="vacation"] .vacation-week-allday-row,
+    body.is-mobile-screen[data-active-tab="vacation"] .vacation-week-hourgrid {
+        grid-template-columns: 44px repeat(3, minmax(0, 1fr));
+    }
 
 /* Both rows sticky, stacked below the date-range/nav row (#vacation-week-layout .table-card-header)
    — top offsets computed in JS by _updateVacationStickyOffsets(). Per explicit user request
@@ -5723,6 +5735,32 @@ body.is-mobile-screen[data-active-tab="dashboard"] .main-sticky-dashboard #btn-o
 body.is-mobile-screen[data-active-tab="vacation"] #vacation-trip-nav-buttons {
         margin-top: 0.6rem;
         width: 100%;
+    }
+/* Long trip names get a smaller mobile font-size — per explicit user request, 2026-08-25 ("reduce
+   font if needed") — so a 2-3 line wrapped name (see the flex fix on #vacation-trip-name in
+   Index.html) stays reasonably compact next to the icon instead of ballooning the sticky header's
+   height. Desktop keeps the larger 1.35rem, where there's more width for names to fit on one line. */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-trip-name {
+        font-size: 1.05rem !important;
+    }
+/* Hide/Show toggle for #vacation-trip-nav-buttons — desktop never relocates that row into the
+   sticky header in the first place (it stays in the normal-flow toolbar card), so the toggle has
+   nothing to do there. Per explicit user request, 2026-08-25. */
+.vacation-trip-nav-toggle-btn {
+    display: none;
+}
+body.is-mobile-screen[data-active-tab="vacation"] .vacation-trip-nav-toggle-btn {
+        display: block;
+    }
+/* Start Time / End Time in the Day View "Log Actual Transaction" popup were overlapping on a real
+   phone — the modal's own width (~300px usable) split into two grid columns left each native
+   time-input too little room, per an annotated screenshot, 2026-08-25. Narrower padding/font-size
+   gives the native control more room to render inside its column without needing the box itself any
+   wider than the grid cell already allows. */
+body.is-mobile-screen #vacation-quick-start-time,
+    body.is-mobile-screen #vacation-quick-end-time {
+        padding: 0.5rem 0.4rem;
+        font-size: 0.8rem;
     }
 /* Day View date-nav row, mobile only, per explicit user request, 2026-08-25: Prev/Next Day show
    just their arrow glyph (see .vacation-day-nav-btn-label below), First Day moves to sit right
