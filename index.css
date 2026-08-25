@@ -5776,6 +5776,28 @@ body.is-mobile-screen[data-active-tab="savings"] .main-sticky-dashboard #btn-ope
         width: 100%;
         box-sizing: border-box;
     }
+/* Credit Cards/Loans ledger header — identical treatment to Dashboard's/Savings' own blocks above,
+   just for #cc-list-view-container's controls (see relocateMobileCCListViewControls() in app.js).
+   Scoped to #cc-list-view-container specifically, not just .list-view-sticky-header, since the
+   Dashboard/Savings variants of that same class live elsewhere in the DOM and must stay untouched
+   by these creditcards/loans-scoped rules. Per explicit user request, 2026-08-25. */
+body.is-mobile-screen[data-active-tab="creditcards"] #cc-list-view-container .list-view-sticky-header,
+    body.is-mobile-screen[data-active-tab="loans"] #cc-list-view-container .list-view-sticky-header {
+        position: static !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+body.is-mobile-screen[data-active-tab="creditcards"] #cc-list-header-actions,
+    body.is-mobile-screen[data-active-tab="loans"] #cc-list-header-actions {
+        display: none !important;
+    }
+body.is-mobile-screen[data-active-tab="creditcards"] .main-sticky-dashboard #btn-open-cclist-add-modal,
+    body.is-mobile-screen[data-active-tab="loans"] .main-sticky-dashboard #btn-open-cclist-add-modal,
+    body.is-mobile-screen[data-active-tab="creditcards"] .main-sticky-dashboard #btn-add-loan-payment,
+    body.is-mobile-screen[data-active-tab="loans"] .main-sticky-dashboard #btn-add-loan-payment {
+        width: 100%;
+        box-sizing: border-box;
+    }
 /* Yearly Savings Summary's own column-header row (Month/Transfers In/Withdrawals/...) — stacks at
    the same offset as the ledger table's headers (top set dynamically by _updateListViewStickyOffset()
    in app.js, which already targeted this table but had nothing to stick it in the first place — the
@@ -5883,15 +5905,13 @@ body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-view-month {
    mobile padding (~3581) same as .main-sticky-dashboard did, so without this their opaque
    background stopped short of each edge and let scrolled content show through in those two side
    strips — most visibly right where they cross the notch/Dynamic Island. #vacation-sticky-header-
-   container is Vacation Planner's own separate sticky wrapper (not .main-sticky-dashboard); the
-   Credit Cards/Loans ledger list-view header (.list-view-sticky-header) stays sticky on mobile too.
-   Savings' own list-view header used to be listed here too, but per explicit user request,
-   2026-08-25, it went static like Dashboard's (see its own dashboard-scoped override, and the
-   matching one for Savings below) — full-bleed no longer applies to it since it doesn't stay pinned
-   at the top edge anymore. */
-body.is-mobile-screen[data-active-tab="vacation"] #vacation-sticky-header-container,
-    body.is-mobile-screen[data-active-tab="creditcards"] .list-view-sticky-header,
-    body.is-mobile-screen[data-active-tab="loans"] .list-view-sticky-header {
+   container is Vacation Planner's own separate sticky wrapper (not .main-sticky-dashboard).
+   Credit Cards/Loans' and Savings' own list-view headers used to be listed here too, but per
+   explicit user request, 2026-08-25, both went static like Dashboard's (see their own
+   tab-scoped overrides above) — full-bleed no longer applies since neither stays pinned at the top
+   edge anymore; .main-sticky-dashboard's own full-bleed rule (~6099) already covers the "+
+   Transaction"/"+ Payment" button now relocated there instead. */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-sticky-header-container {
         margin-left: -1.5rem !important;
         margin-right: -1.5rem !important;
         padding-left: 1.5rem !important;
