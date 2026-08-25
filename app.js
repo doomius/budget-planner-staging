@@ -4,7 +4,7 @@
 // it's possible to tell, just by looking at the page, whether a given deployment (GitHub Pages,
 // Google Sites, a phone's cached copy, etc.) is actually running the latest code — rather than
 // guessing from behavior alone whether a reported bug is a real regression or a stale cache.
-const BUILD_VERSION = '2026-08-25 07:47';
+const BUILD_VERSION = '2026-08-25 08:12';
 
 // --- CONFIG & STATE ---
 const CONFIG = {
@@ -3837,6 +3837,7 @@ function migrateDatabase() {
     if (!['month', 'week', 'day', 'list', 'expenses'].includes(state.vacationViewMode)) { state.vacationViewMode = 'week'; migrated = true; }
     if (state.vacationSelectedTripId === undefined) { state.vacationSelectedTripId = ''; migrated = true; }
     if (state.vacationWeekStartDate === undefined) { state.vacationWeekStartDate = ''; migrated = true; }
+    if (state.vacationTripNavCollapsed === undefined) { state.vacationTripNavCollapsed = false; migrated = true; }
     if (state.vacationDayDate === undefined) { state.vacationDayDate = ''; migrated = true; }
     (state.vacationTrips || []).forEach(trip => {
         if (!Array.isArray(trip.prePostActivities)) { trip.prePostActivities = []; migrated = true; }
@@ -25684,6 +25685,12 @@ function relocateMobileVacationStickyHeader() {
         // heroCard's only other child at this point is topRow (icon+name), so appendChild lands this
         // right after it.
         heroCard.appendChild(navButtons);
+        // Collapsible — per explicit user request, 2026-08-25: this row now occupies permanent
+        // sticky-header space on mobile, so give it a Hide/Show toggle (see #btn-toggle-vacation-
+        // trip-nav in Index.html) rather than forcing it to always show.
+        navButtons.classList.toggle('hidden', !!state.vacationTripNavCollapsed);
+        const navToggleBtn = document.getElementById('btn-toggle-vacation-trip-nav');
+        if (navToggleBtn) navToggleBtn.textContent = state.vacationTripNavCollapsed ? 'Show' : 'Hide';
     } else {
         detailsCard.style.display = 'none';
         titleBlock.insertAdjacentElement('afterend', metaEl);
@@ -25691,6 +25698,11 @@ function relocateMobileVacationStickyHeader() {
         topRow.appendChild(actionsHost);
         topRow.appendChild(summaryGrid);
         viewToggle.insertAdjacentElement('beforebegin', navButtons);
+        // The Hide/Show toggle only exists on mobile — always show this row on desktop regardless
+        // of whatever state.vacationTripNavCollapsed is left at from a mobile session, same as
+        // .hidden being a plain unscoped display:none that desktop's own CSS doesn't otherwise
+        // override for this element.
+        navButtons.classList.remove('hidden');
     }
 }
 
@@ -25702,6 +25714,24 @@ function getVacationWeekDates(anchorDateStr) {
     for (let i = 0; i < 7; i++) {
         const day = new Date(sunday);
         day.setDate(sunday.getDate() + i);
+        dates.push(formatLocalDate(day));
+    }
+    return dates;
+}
+
+// Mobile's replacement for the Week view — per explicit user request, 2026-08-25, a 7-day grid
+// widened the whole page (.vacation-week-grid's own 700px min-width) far past any phone's viewport,
+// so only ~3 of the 7 columns were ever actually visible without scrolling sideways. Unlike
+// getVacationWeekDates() above, this does NOT snap to the nearest Sunday — it starts exactly at
+// anchorDateStr (state.vacationWeekStartDate, which already defaults to the trip's own start date
+// and is what the "First Day" button resets it to), matching "begin with the first day of the
+// trip" rather than whatever Sunday that date happens to fall in.
+function getVacationThreeDayDates(anchorDateStr) {
+    const d = new Date(anchorDateStr + 'T00:00:00');
+    const dates = [];
+    for (let i = 0; i < 3; i++) {
+        const day = new Date(d);
+        day.setDate(d.getDate() + i);
         dates.push(formatLocalDate(day));
     }
     return dates;
@@ -26234,8 +26264,11 @@ function renderVacationWeekGrid(trip) {
     if (weekTzSelect) weekTzSelect.value = state.activeVacationTimeZone || 'America/Chicago';
 
     const anchor = state.vacationWeekStartDate || trip.startDate || formatLocalDate(new Date());
-    const weekDates = getVacationWeekDates(anchor);
-    document.getElementById('vacation-week-title').textContent = `${formatDateDisplay(weekDates[0])} – ${formatDateDisplay(weekDates[6])}`;
+    // Mobile shows a 3-day window instead of the full 7-day week — see getVacationThreeDayDates()'s
+    // own comment. Everything below this already iterates weekDates/itins generically (no other
+    // hardcoded 7-day assumption existed in this function), so it needs no further branching.
+    const weekDates = isMobileViewport() ? getVacationThreeDayDates(anchor) : getVacationWeekDates(anchor);
+    document.getElementById('vacation-week-title').textContent = `${formatDateDisplay(weekDates[0])} – ${formatDateDisplay(weekDates[weekDates.length - 1])}`;
     const todayStr = formatLocalDate(new Date());
     const itins = weekDates.map(dateStr => getVacationItineraryForDate(trip, dateStr));
 
@@ -27056,6 +27089,11 @@ function genVacationId(prefix) {
 
 function setupVacationEventListeners() {
     document.getElementById('btn-vacation-day-add-transaction')?.addEventListener('click', openVacationDayQuickAddModal);
+    document.getElementById('btn-toggle-vacation-trip-nav')?.addEventListener('click', () => {
+        state.vacationTripNavCollapsed = !state.vacationTripNavCollapsed;
+        saveDatabase();
+        renderVacationTab();
+    });
     const tripSelect = document.getElementById('vacation-trip-select');
     // Switching WHICH trip is selected resets the Week view's anchor to the new trip's own start
     // date — staying on whatever week the PREVIOUS trip happened to be showing would almost always
@@ -27109,7 +27147,9 @@ function setupVacationEventListeners() {
         const trip = getSelectedVacationTrip();
         const anchor = state.vacationWeekStartDate || trip?.startDate || formatLocalDate(new Date());
         const d = new Date(anchor + 'T00:00:00');
-        d.setDate(d.getDate() - 7);
+        // Mobile's 3-day view shifts by 3 days per tap instead of a full 7-day week — per explicit
+        // user request, 2026-08-25 (matches getVacationThreeDayDates()'s own window size).
+        d.setDate(d.getDate() - (isMobileViewport() ? 3 : 7));
         state.vacationWeekStartDate = formatLocalDate(d);
         saveDatabase();
         renderVacationTab();
@@ -27118,7 +27158,7 @@ function setupVacationEventListeners() {
         const trip = getSelectedVacationTrip();
         const anchor = state.vacationWeekStartDate || trip?.startDate || formatLocalDate(new Date());
         const d = new Date(anchor + 'T00:00:00');
-        d.setDate(d.getDate() + 7);
+        d.setDate(d.getDate() + (isMobileViewport() ? 3 : 7));
         state.vacationWeekStartDate = formatLocalDate(d);
         saveDatabase();
         renderVacationTab();
