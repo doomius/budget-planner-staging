@@ -758,6 +758,17 @@ body.is-mobile-screen[data-active-tab="vacation"] .vacation-week-header-row,
     background: #0d111e;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
+/* "+ Add Transaction", mobile Day view only: sticky directly below #vacation-sticky-header-container
+   (the trip hero card), ahead of the date-nav row above — relocateMobileVacationDayAddTransactionButton()
+   (app.js) physically moves it to be #vacation-day-layout's first child so it also occupies that slot
+   in DOM order (position:sticky can't visually reorder siblings, only freeze whichever slot an element
+   already occupies), and _updateVacationStickyOffsets() assigns its `top` and pushes the date-nav row's
+   own offset down to account for it. Per explicit user request, 2026-08-25. */
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-add-transaction {
+        position: sticky;
+        z-index: 44;
+        margin-bottom: 0.75rem;
+    }
 .vacation-week-header-cell {
     text-align: center;
     padding: 0.5rem 0.25rem;
@@ -5862,18 +5873,15 @@ body.is-mobile-screen #vacation-quick-start-time,
 body.is-mobile-screen[data-active-tab="vacation"] .vacation-day-nav-btn-label {
         display: none;
     }
-/* Reordered per explicit user request, 2026-08-25: Save Changes moved to sit right after the date
-   field (its own row was previously claimed first by the wide timezone select, per an annotated
-   screenshot — putting date+Save first in source order gives that pair first claim on row 1's
-   width instead). First/Last Day now bookend the Prev/Next arrows (First Day before, Last Day
-   after) rather than both trailing after them. */
-body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-date-picker { order: 1; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-save-date { order: 2; }
-body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-timezone-select { order: 3; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-first-day { order: 4; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-prev-day { order: 5; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-next-day { order: 6; }
-body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-last-day { order: 7; }
+/* First/Last Day bookend the Prev/Next arrows (First Day before, Last Day after) rather than both
+   trailing after them. The manual date field + Save Changes this row used to also reorder were
+   removed entirely, 2026-08-25 (Day view now always opens on the trip's first day, and First/Prev/
+   Next/Last Day are the only ways to move off it). */
+body.is-mobile-screen[data-active-tab="vacation"] #vacation-day-timezone-select { order: 1; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-first-day { order: 2; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-prev-day { order: 3; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-next-day { order: 4; }
+body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-jump-last-day { order: 5; }
 body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-out,
     body.is-mobile-screen[data-active-tab="vacation"] #btn-vacation-day-zoom-in {
         display: none;
